@@ -63,7 +63,7 @@ export function AnalyzeView() {
           The analyzer is locked. <Link href="/settings" className="font-medium underline">Add your Gemini API key</Link> to enable it.
         </Alert>
       )}
-      {loading && <p className="text-sm text-neutral-500">Fetching data, computing indicators, running forecast and sentiment, then asking Gemini…</p>}
+      {loading && <p className="text-sm text-neutral-500">Fetching 5 years of prices and financials, scoring quality, valuation and trend, running forecast and sentiment, then asking Gemini…</p>}
       {error && (
         <ErrorWithSuggestions
           error={error}

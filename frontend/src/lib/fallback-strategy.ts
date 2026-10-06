@@ -1,208 +1,247 @@
-import type { AnalyzerStrategy, PositionStrategy } from "@/lib/strategy-schema";
+import type { AnalyzerStrategy, PositionStrategy, VERDICTS } from "@/lib/strategy-schema";
 import type { AnalyzeSignals, PositionFacts, PositionSignals } from "@/lib/types";
 
 /*
- * Deterministic, rule-based strategies used ONLY when every Gemini model fails.
+ * Deterministic, rule-based LONG-TERM strategies used ONLY when every Gemini model fails.
  * Same output shape as the AI path so the UI renders it identically; always LOW confidence
  * and clearly labelled as a fallback.
+ *
+ * Scoring (each roughly -1..+1.5):
+ *   quality   - Piotroski F-Score ratio, ROE
+ *   valuation - analyst upside, PEG
+ *   trend     - 200-day trend, 1y return relative to the benchmark index
  */
 
+type Verdict = (typeof VERDICTS)[number];
+type Row = { area: string; verdict: Verdict; note: string };
+
 const r2 = (n: number) => Math.round(n * 100) / 100;
+const fmt = (n: number | null | undefined, suffix = "") => (n == null ? "n/a" : `${r2(n)}${suffix}`);
+const verdictOf = (score: number, known: boolean): Verdict => (!known ? "UNKNOWN" : score > 0.25 ? "POSITIVE" : score < -0.25 ? "NEGATIVE" : "NEUTRAL");
 
 const FALLBACK_NOTE = "Rule-based fallback: Gemini was unavailable, so this was generated from fixed rules, not AI.";
+const MAX_WEIGHT = 10;
 
-function context(signals: PositionSignals) {
-  const t = signals.technicals;
-  const f = signals.forecast;
-  const last = t.last_close;
-  const atr = t.atr_14 ?? last * 0.02;
-  const s1 = t.support[0] ?? last - 1.5 * atr;
-  const s2 = t.support[1] ?? s1 - atr;
-  const r1 = t.resistance[0];
-  const r2nd = t.resistance[1];
-  const risks = [FALLBACK_NOTE];
-  if (f.is_mock) risks.push("The forecast is a synthetic baseline (local model not loaded), not a model prediction.");
-  return {
-    t,
-    f,
-    last,
-    atr,
-    s1,
-    s2,
-    r1,
-    r2nd,
-    risks,
-    macdBull: t.macd_trend === "bullish",
-    fcUp: f.expected_return_pct > 0.5,
-    fcDown: f.expected_return_pct < -0.5,
+function assess(signals: PositionSignals) {
+  const lt = signals.long_term;
+  const f = signals.fundamentals;
+  const last = signals.technicals.last_close;
+
+  // Quality
+  let quality = 0;
+  const fRatio = f.piotroski_score != null && f.piotroski_max ? f.piotroski_score / f.piotroski_max : null;
+  if (fRatio != null && (f.piotroski_max ?? 0) >= 5) quality += fRatio >= 0.6 ? 1 : fRatio <= 0.35 ? -1 : 0;
+  if (f.roe_pct != null) quality += f.roe_pct >= 15 ? 0.5 : f.roe_pct < 8 ? -0.5 : 0;
+  const qualityKnown = fRatio != null || f.roe_pct != null;
+
+  // Valuation
+  let valuation = 0;
+  if (f.analyst_upside_pct != null) valuation += f.analyst_upside_pct >= 15 ? 1 : f.analyst_upside_pct <= -5 ? -1 : 0;
+  if (f.peg != null && f.peg > 0) valuation += f.peg < 1 ? 0.5 : f.peg > 2.5 ? -0.5 : 0;
+  const valuationKnown = f.analyst_upside_pct != null || f.peg != null;
+
+  // Trend
+  let trend = lt.trend === "uptrend" ? 1 : lt.trend === "downtrend" ? -1 : 0;
+  if (lt.relative_return_1y_pct != null) trend += lt.relative_return_1y_pct > 5 ? 0.5 : lt.relative_return_1y_pct < -10 ? -0.5 : 0;
+
+  // Risk (informational; drives position-size caps)
+  const highRisk = (lt.volatility_1y_pct ?? 0) > 40 || lt.max_drawdown_pct < -50;
+
+  const scorecard: Row[] = [
+    {
+      area: "Business quality",
+      verdict: verdictOf(quality, qualityKnown),
+      note: `Piotroski F-Score ${f.piotroski_score ?? "n/a"}/${f.piotroski_max ?? 9}, ROE ${fmt(f.roe_pct, "%")}, debt/equity ${fmt(f.debt_to_equity)}.`,
+    },
+    {
+      area: "Valuation",
+      verdict: verdictOf(valuation, valuationKnown),
+      note: `P/E ${fmt(f.pe_trailing)} (forward ${fmt(f.pe_forward)}), PEG ${fmt(f.peg)}, analyst target ${fmt(f.analyst_target_mean)} (${fmt(f.analyst_upside_pct, "%")} upside).`,
+    },
+    {
+      area: "Long-term trend",
+      verdict: verdictOf(trend, lt.trend !== "unknown"),
+      note: `${lt.trend}; ${fmt(lt.price_vs_sma200_pct, "%")} vs 200-day average, 1y ${fmt(lt.return_1y_pct, "%")} vs ${lt.benchmark ?? "index"} ${fmt(lt.benchmark_return_1y_pct, "%")}.`,
+    },
+    {
+      area: "Risk",
+      verdict: highRisk ? "NEGATIVE" : "NEUTRAL",
+      note: `1y volatility ${fmt(lt.volatility_1y_pct, "%")}, max drawdown ${fmt(lt.max_drawdown_pct, "%")}, beta ${fmt(lt.beta_1y)}.`,
+    },
+  ];
+
+  // Staggered buy levels below the price: 200-DMA, weekly supports, 52-week low; de-duplicated within 3%.
+  const candidates = [lt.sma_200, ...lt.weekly_support, lt.low_52w]
+    .filter((p): p is number => p != null && p < last * 0.995)
+    .sort((a, b) => b - a);
+  const levels: number[] = [];
+  for (const p of candidates) if (!levels.some((l) => Math.abs(l - p) / l < 0.03)) levels.push(p);
+  while (levels.length < 2) levels.push((levels.at(-1) ?? last) * 0.93);
+
+  const targets = [
+    { label: "Analyst mean target", price: f.analyst_target_mean },
+    { label: "Weekly resistance", price: lt.weekly_resistance[0] },
+    { label: "200-day average", price: lt.sma_200 },
+    { label: "52-week high", price: lt.high_52w },
+  ]
+    .filter((t): t is { label: string; price: number } => t.price != null && t.price > last * 1.01)
+    .sort((a, b) => a.price - b.price)
+    .slice(0, 3)
+    .map((t) => ({ ...t, price: r2(t.price) }));
+
+  const invalidationPrice = r2(Math.min(lt.low_52w, ...lt.weekly_support.slice(-1)) * 0.97);
+  const thesisInvalidation = {
+    price: invalidationPrice,
+    condition:
+      lt.trend === "uptrend"
+        ? `Weekly closes below the 200-day average (${fmt(lt.sma_200)}) for 4+ weeks, or the Piotroski F-Score falling below 4.`
+        : `A weekly close below ${invalidationPrice} (3% under the 52-week low / lowest weekly support), or the Piotroski F-Score falling below 4.`,
   };
+
+  const risks = [FALLBACK_NOTE];
+  if (signals.forecast.is_mock) risks.push("The price forecast is a synthetic baseline (local model not loaded).");
+  if (f.note) risks.push(f.note);
+  if (highRisk) risks.push("High volatility / deep historical drawdowns: size the position conservatively.");
+
+  return { last, lt, f, quality, valuation, trend, highRisk, scorecard, levels, targets, thesisInvalidation, risks };
 }
 
 export function rulePositionStrategy(signals: PositionSignals, pos: PositionFacts): PositionStrategy {
-  const c = context(signals);
-  const { last, atr } = c;
-  const targetsAbove = (levels: [string, number | undefined][]) =>
-    levels.filter((l): l is [string, number] => l[1] != null && l[1] > last).map(([label, price]) => ({ label, price: r2(price) }));
+  const a = assess(signals);
+  const weight = pos.portfolioWeightPct;
+  const base = {
+    confidence: "LOW" as const,
+    scorecard: a.scorecard,
+    thesisInvalidation: a.thesisInvalidation,
+    fairValue: null,
+    targets: a.targets,
+    horizon: "3-5 years",
+    reviewTrigger: "After the next quarterly results, or if the invalidation condition is hit.",
+    risks: a.risks,
+  };
+  const pnl = `${pos.unrealizedPnlPct >= 0 ? "up" : "down"} ${Math.abs(pos.unrealizedPnlPct).toFixed(1)}%`;
 
-  if (pos.status === "LOSS") {
-    if (c.fcUp && c.macdBull && (c.t.rsi_14 ?? 50) < 70) {
-      const low = r2(Math.max(c.s1 - 0.25 * atr, last - 2 * atr));
-      const high = r2(Math.max(low, Math.min(last, low + atr)));
-      const addQty = Math.floor(pos.quantity * 0.25);
-      const mid = (low + high) / 2;
-      const newAvg = addQty > 0 ? (pos.avgBuyPrice * pos.quantity + mid * addQty) / (pos.quantity + addQty) : null;
-      return {
-        stance: "AVERAGE_DOWN",
-        confidence: "LOW",
-        summary: `Position is down ${Math.abs(pos.unrealizedPnlPct).toFixed(1)}%, but the forecast median and MACD both lean positive. A measured add near support lowers the cost basis with a defined stop.`,
-        actions: [
-          {
-            action: "Buy",
-            price: r2(mid),
-            quantity: addQty || null,
-            rationale: `Add in the ${low}–${high} zone (support / ATR band).${newAvg ? ` Blended average if filled at midpoint: ${r2(newAvg)}.` : ""}`,
-          },
-          { action: "Set stop-loss", price: r2(Math.min(c.s2, low - 1.5 * atr)), quantity: null, rationale: "Below second support / 1.5× ATR under the zone." },
-        ],
-        stopLoss: r2(Math.min(c.s2, low - 1.5 * atr)),
-        trailingStopPct: null,
-        averageDownZone: { low, high },
-        targets: targetsAbove([
-          ["Resistance 1", c.r1],
-          ["Breakeven", pos.avgBuyPrice],
-        ]),
-        reviewInDays: 7,
-        risks: c.risks,
-      };
-    }
-    if (c.fcDown && !c.macdBull) {
-      const bounce = c.r1 != null ? Math.min(c.r1, last + atr) : last + atr;
-      return {
-        stance: "CUT_LOSS",
-        confidence: "LOW",
-        summary: `Position is down ${Math.abs(pos.unrealizedPnlPct).toFixed(1)}% and both the forecast median and MACD point lower. Reducing exposure limits further drawdown.`,
-        actions: [
-          { action: "Sell on bounce", price: r2(bounce), quantity: pos.quantity, rationale: "Exit into the nearest resistance / +1× ATR if reached." },
-          { action: "Set stop-loss", price: r2(last - atr), quantity: pos.quantity, rationale: "1× ATR below the last close caps further loss." },
-        ],
-        stopLoss: r2(last - atr),
-        trailingStopPct: null,
-        averageDownZone: null,
-        targets: [],
-        reviewInDays: 3,
-        risks: c.risks,
-      };
-    }
+  if (a.quality <= -1 && a.trend < 0) {
+    const half = Math.floor(pos.quantity / 2);
+    const exitLevel = r2(Math.max(a.last, a.lt.weekly_resistance[0] ?? a.last));
     return {
-      stance: "HOLD",
-      confidence: "LOW",
-      summary: `Position is down ${Math.abs(pos.unrealizedPnlPct).toFixed(1)}% with mixed signals. Hold with a stop below support rather than adding capital.`,
-      actions: [{ action: "Set stop-loss", price: r2(c.s1 - 0.5 * atr), quantity: pos.quantity, rationale: "Half an ATR below first support." }],
-      stopLoss: r2(c.s1 - 0.5 * atr),
-      trailingStopPct: null,
-      averageDownZone: null,
-      targets: targetsAbove([
-        ["Resistance 1", c.r1],
-        ["Breakeven", pos.avgBuyPrice],
-      ]),
-      reviewInDays: 5,
-      risks: c.risks,
+      ...base,
+      stance: "EXIT",
+      summary: `Position is ${pnl}. Business quality is weak and the long-term trend is down, so the original thesis looks broken. Exit in parts into strength rather than at the lows.`,
+      actions: [
+        { action: "Sell half", price: exitLevel, quantity: half || null, rationale: "Into the nearest weekly resistance / current price." },
+        { action: "Sell remainder", price: a.lt.sma_200 ? r2(Math.max(a.last, a.lt.sma_200)) : null, quantity: pos.quantity - half, rationale: "On a rebound toward the 200-day average, or at the invalidation level, whichever comes first." },
+      ],
     };
   }
 
-  // In profit (or flat)
-  const trailPct = r2(((2 * atr) / last) * 100);
-  const cushionExceeds2Atr = last - pos.avgBuyPrice > 2 * atr;
-  const trailStop = r2(cushionExceeds2Atr ? Math.max(last - 2 * atr, pos.avgBuyPrice) : last - 2 * atr);
-
-  if (c.t.rsi_state === "overbought" || (c.fcDown && !c.macdBull)) {
-    const sellQty = Math.floor(pos.quantity / 3);
+  if (a.quality <= -1 || (a.trend < 0 && a.valuation < 0)) {
     return {
-      stance: "TAKE_PARTIAL_PROFIT",
-      confidence: "LOW",
-      summary: `Position is up ${pos.unrealizedPnlPct.toFixed(1)}%. ${c.t.rsi_state === "overbought" ? "RSI is overbought" : "The forecast median and MACD are turning down"}, so locking in part of the gain is prudent.`,
-      actions: [
-        { action: "Sell", price: r2(c.r1 ?? last), quantity: sellQty || null, rationale: "Trim about one third at the last price / nearest resistance." },
-        { action: "Trail stop", price: trailStop, quantity: null, rationale: `Trail the remainder at 2× ATR (${trailPct}%).` },
-      ],
-      stopLoss: trailStop,
-      trailingStopPct: trailPct,
-      averageDownZone: null,
-      targets: targetsAbove([
-        ["Resistance 1", c.r1],
-        ["Forecast p90", c.f.p90_end],
-      ]),
-      reviewInDays: 5,
-      risks: c.risks,
+      ...base,
+      stance: "REVIEW_THESIS",
+      summary: `Position is ${pnl}. ${a.quality <= -1 ? "Fundamental quality is weakening" : "The trend is down and valuation offers little cushion"}. Do not add money until the next results confirm the business is stabilising.`,
+      actions: [{ action: "Hold, no new buying", price: null, quantity: null, rationale: "Wait for improving F-Score / earnings, or a reclaim of the 200-day average." }],
+    };
+  }
+
+  if (weight != null && weight > 15) {
+    const sellQty = Math.floor(pos.quantity * (1 - MAX_WEIGHT / weight));
+    // Near the 52-week low, rebalance into the next rebound instead of selling at the bottom.
+    const nearLow = a.lt.pct_from_52w_low < 10;
+    const resistance = a.lt.weekly_resistance.filter((p) => p > a.last).slice(0, 2);
+    const actions =
+      nearLow && resistance.length
+        ? resistance.map((price, i) => {
+            const qty = i === resistance.length - 1 ? sellQty - Math.floor(sellQty / resistance.length) * i : Math.floor(sellQty / resistance.length);
+            return { action: `Sell to rebalance (part ${i + 1})`, price: r2(price), quantity: qty || null, rationale: "Into weekly resistance on a rebound, rather than at the 52-week low." };
+          })
+        : [{ action: "Sell to rebalance", price: r2(a.last), quantity: sellQty || null, rationale: `Brings the weight back to about ${MAX_WEIGHT}%.` }];
+    return {
+      ...base,
+      stance: "TRIM",
+      summary: `Position is ${pnl} and makes up ${weight.toFixed(1)}% of the portfolio, above the ~${MAX_WEIGHT}% single-stock guideline. Reduce it to about ${MAX_WEIGHT}% to limit concentration risk${nearLow ? ", selling into rebounds rather than at the lows" : ""}. Do not add more.`,
+      actions,
+    };
+  }
+
+  if (pos.status === "PROFIT" && a.valuation <= -1 && (a.lt.rsi_weekly_14 ?? 0) > 70) {
+    const sellQty = Math.floor(pos.quantity * 0.2);
+    return {
+      ...base,
+      stance: "TRIM",
+      summary: `Position is ${pnl}. Valuation looks stretched versus analyst targets and the weekly RSI is overbought, so booking part of the gain is reasonable while keeping the core holding.`,
+      actions: [{ action: "Sell partial", price: r2(a.last), quantity: sellQty || null, rationale: "Trim ~20%; keep the rest compounding." }],
+    };
+  }
+
+  if (a.quality >= 1 && a.valuation >= 0 && (weight == null || weight < MAX_WEIGHT)) {
+    // Add up to the concentration cap (or +25% of the holding if the weight is unknown), split 50/50 across two levels.
+    const capValue = weight != null && weight > 0 ? pos.marketValue * (MAX_WEIGHT / weight - 1) : pos.marketValue * 0.25;
+    const budget = Math.min(capValue, pos.marketValue * 0.5);
+    const tranches = a.levels.slice(0, 2).map((price) => ({ price: r2(price), quantity: Math.floor(budget / 2 / price) }));
+    const addedQty = tranches.reduce((s, t) => s + t.quantity, 0);
+    const newAvg = addedQty > 0 ? (pos.costBasis + tranches.reduce((s, t) => s + t.price * t.quantity, 0)) / (pos.quantity + addedQty) : null;
+    return {
+      ...base,
+      stance: "ACCUMULATE",
+      summary: `Position is ${pnl}. Business quality is sound and valuation is not stretched, so adding gradually at lower levels is reasonable while staying under the ~${MAX_WEIGHT}% weight guideline.`,
+      actions: tranches.map((t, i) => ({
+        action: `Buy tranche ${i + 1}`,
+        price: t.price,
+        quantity: t.quantity || null,
+        rationale: `${i === 0 ? "Near the 200-day average / first weekly support." : "Deeper support / near the 52-week low."}${i === tranches.length - 1 && newAvg ? ` Average cost if both fill: ${r2(newAvg)}.` : ""}`,
+      })),
     };
   }
 
   return {
-    stance: "TRAIL_STOP",
-    confidence: "LOW",
-    summary: `Position is up ${pos.unrealizedPnlPct.toFixed(1)}% and the trend is intact. Let it run with a 2× ATR trailing stop.`,
-    actions: [{ action: "Trail stop", price: trailStop, quantity: null, rationale: `2× ATR trailing stop (${trailPct}%)${cushionExceeds2Atr ? ", floored at cost basis" : ""}.` }],
-    stopLoss: trailStop,
-    trailingStopPct: trailPct,
-    averageDownZone: null,
-    targets: targetsAbove([
-      ["Resistance 1", c.r1],
-      ["Resistance 2", c.r2nd],
-      ["Forecast p90", c.f.p90_end],
-    ]),
-    reviewInDays: 7,
-    risks: c.risks,
+    ...base,
+    stance: "HOLD",
+    summary: `Position is ${pnl}. Signals are mixed; there is no strong case to add or sell. Hold and reassess after the next results.`,
+    actions: [{ action: "Hold", price: null, quantity: null, rationale: "Re-evaluate after quarterly results or if the invalidation condition is hit." }],
   };
 }
 
 export function ruleAnalyzerStrategy(signals: AnalyzeSignals): AnalyzerStrategy {
-  const c = context(signals);
-  const { last, atr, t } = c;
+  const a = assess(signals);
   const sent = signals.sentiment.score;
+  const total = a.quality + a.valuation + a.trend + (sent > 0.3 ? 0.25 : sent < -0.3 ? -0.25 : 0);
+  const stance: AnalyzerStrategy["stance"] = total >= 2 ? "BUY" : total >= 1 ? "ACCUMULATE_GRADUALLY" : total >= -0.5 ? "WATCHLIST" : "AVOID";
 
-  const votes = [
-    c.macdBull ? 1 : -1,
-    c.fcUp ? 1 : c.fcDown ? -1 : 0,
-    sent > 0.15 ? 1 : sent < -0.15 ? -1 : 0,
-    t.rsi_state === "oversold" ? 1 : t.rsi_state === "overbought" ? -1 : 0,
-  ];
-  const score = votes.reduce((a, b) => a + b, 0);
-  const stance: AnalyzerStrategy["stance"] = score >= 2 ? "BUY" : score === 1 ? "ACCUMULATE_ON_DIPS" : score === 0 ? "WAIT" : "AVOID";
-
-  const buyZone =
-    stance === "BUY"
-      ? { low: r2(Math.max(c.s1, last - atr)), high: r2(last) }
-      : { low: r2(c.s1 - 0.25 * atr), high: r2(Math.min(last, c.s1 + 0.25 * atr)) };
-  if (buyZone.low > buyZone.high) [buyZone.low, buyZone.high] = [buyZone.high, buyZone.low];
-
-  const stopLoss = r2(buyZone.low - 1.5 * atr);
-  let targets = [
-    { label: "Resistance 1", price: c.r1 },
-    { label: "Resistance 2", price: c.r2nd },
-    { label: "Forecast p90", price: c.f.p90_end },
-  ]
-    .filter((x): x is { label: string; price: number } => x.price != null && x.price > buyZone.high)
-    .map((x) => ({ ...x, price: r2(x.price) }))
-    .sort((a, b) => a.price - b.price)
-    .slice(0, 3);
-  if (!targets.length) targets = [{ label: "+2× ATR", price: r2(buyZone.high + 2 * atr) }];
+  const prices = stance === "BUY" ? [a.last, ...a.levels.slice(0, 2)] : a.levels.slice(0, 3);
+  const alloc = prices.length === 3 ? [40, 30, 30] : [50, 50];
+  const tranches = prices.map((p, i) => ({
+    price: r2(p),
+    allocationPct: alloc[i] ?? 0,
+    note: i === 0 && stance === "BUY" ? "Starter position at the current price." : "Staggered buy near support / 200-day average / 52-week low.",
+  }));
+  const zonePrices = tranches.map((t) => t.price);
 
   return {
     stance,
     confidence: "LOW",
-    summary: `Signal tally ${score > 0 ? "+" : ""}${score} across MACD, forecast, sentiment and RSI. ${
-      stance === "BUY" || stance === "ACCUMULATE_ON_DIPS" ? "Entry is reasonable within the zone below." : "Wait for price to reach the zone below before considering entry."
+    summary: `Rule-based tally ${total >= 0 ? "+" : ""}${r2(total)} across quality, valuation and trend. ${
+      stance === "BUY" || stance === "ACCUMULATE_GRADUALLY"
+        ? "Build the position in tranches rather than all at once."
+        : "Wait for better data or a lower price before committing capital."
     }`,
-    buyZone,
-    stopLoss,
-    targets,
-    holdDuration: "Up to ~3 weeks (14-trading-day forecast horizon)",
-    rationale: [
-      `MACD trend: ${t.macd_trend}${t.macd_crossover !== "none" ? ` (${t.macd_crossover} crossover ${t.macd_crossover_bars_ago} bars ago)` : ""}.`,
-      `Forecast median ${c.f.expected_return_pct > 0 ? "+" : ""}${c.f.expected_return_pct}% over ${c.f.horizon_trading_days} trading days.`,
-      `News sentiment ${signals.sentiment.label} (${sent}).`,
-      `RSI(14) ${t.rsi_14 ?? "n/a"} (${t.rsi_state}). Stop is 1.5× ATR below the zone.`,
+    scorecard: [
+      ...a.scorecard,
+      {
+        area: "News sentiment",
+        verdict: signals.sentiment.headlines.length ? verdictOf(sent, true) : "UNKNOWN",
+        note: `Aggregate ${signals.sentiment.label} (${sent.toFixed(2)}); short-term noise for a long-term investor.`,
+      },
     ],
-    risks: signals.sentiment.is_mock ? [...c.risks, "Sentiment is a keyword heuristic (FinBERT not loaded)."] : c.risks,
+    accumulationZone: { low: Math.min(...zonePrices), high: Math.max(...zonePrices) },
+    tranches,
+    thesisInvalidation: a.thesisInvalidation,
+    fairValue: null,
+    targets: a.targets,
+    horizon: "3-5 years",
+    maxPortfolioWeightPct: a.highRisk ? 3 : a.quality >= 1 ? 8 : 5,
+    reviewTrigger: "After the next quarterly results.",
+    rationale: a.scorecard.map((r) => `${r.area}: ${r.note}`),
+    risks: signals.sentiment.is_mock ? [...a.risks, "Sentiment is a keyword heuristic (FinBERT not loaded)."] : a.risks,
   };
 }

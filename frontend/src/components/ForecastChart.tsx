@@ -4,13 +4,13 @@ import { useMemo, useState, type KeyboardEvent, type PointerEvent } from "react"
 import { fmtNum } from "@/lib/format";
 import type { Forecast, PricePoint } from "@/lib/types";
 
-// Single-axis line chart: recent closes (neutral ink) + forecast median (blue, dashed)
+// Single-axis line chart: recent weekly closes (neutral ink) + forecast median (blue, dashed)
 // with the p10–p90 band. Crosshair tooltip on hover/arrow keys; table view below.
 
 const W = 640;
 const H = 220;
 const PAD_Y = 12;
-const HISTORY_BARS = 60;
+const HISTORY_POINTS = 104; // ~2 years of weekly closes
 
 const INK = "#52514e";
 const SERIES = "#2a78d6";
@@ -27,7 +27,7 @@ export function ForecastChart({ history, forecast }: { history: PricePoint[]; fo
   const [hover, setHover] = useState<number | null>(null);
 
   const { rows, x, y, histPath, medianPath, bandPath, splitX, ticks } = useMemo(() => {
-    const hist = history.slice(-HISTORY_BARS);
+    const hist = history.slice(-HISTORY_POINTS);
     const last = hist[hist.length - 1];
     const rows: Row[] = [
       ...hist.map((h) => ({ date: h.date, close: h.close })),
@@ -75,7 +75,7 @@ export function ForecastChart({ history, forecast }: { history: PricePoint[]; fo
   return (
     <figure>
       <figcaption className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-neutral-600">
-        <LegendLine color={INK} label={`Close (last ${Math.min(HISTORY_BARS, history.length)} sessions)`} />
+        <LegendLine color={INK} label={`Weekly close (last ${Math.min(HISTORY_POINTS, history.length)} weeks)`} />
         <LegendLine color={SERIES} dashed label="Forecast median" />
         <span className="inline-flex items-center gap-1.5">
           <span className="h-2.5 w-4 rounded-sm" style={{ background: SERIES, opacity: 0.18 }} />
@@ -92,7 +92,7 @@ export function ForecastChart({ history, forecast }: { history: PricePoint[]; fo
           onBlur={() => setHover(null)}
           tabIndex={0}
           role="img"
-          aria-label={`Price history and ${forecast.horizon_trading_days}-day forecast. Use arrow keys to inspect values.`}
+          aria-label={`Weekly price history and ${forecast.horizon_periods}-week projection. Use arrow keys to inspect values.`}
         >
           <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full overflow-visible">
             {ticks.map((t) => (

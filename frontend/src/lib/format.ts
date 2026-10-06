@@ -16,6 +16,16 @@ export function fmtMoney(n: number | null | undefined, currency?: string | null)
   }
 }
 
+/** Large amounts in compact form, e.g. ₹1.6T, $107.7B. */
+export function fmtCompact(n: number | null | undefined, currency?: string | null): string {
+  if (!valid(n)) return DASH;
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency: currency || "USD", notation: "compact", maximumFractionDigits: 1 }).format(n);
+  } catch {
+    return new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 1 }).format(n);
+  }
+}
+
 export function fmtSignedMoney(n: number | null | undefined, currency?: string | null): string {
   if (!valid(n)) return DASH;
   return `${n > 0 ? "+" : n < 0 ? "−" : ""}${fmtMoney(Math.abs(n), currency)}`;

@@ -5,13 +5,14 @@ import type { GeminiAttempt } from "@/lib/types";
 /*
  * Gemini with a model fallback chain.
  *
- *  For each model in the configured chain (Settings → Model fallback chain):
+ *  The last model that succeeded is tried first; then each model in the configured chain
+ *  (Settings → Model fallback chain):
  *    - 429 / 5xx / timeouts / network  → retry the same model once with backoff, then move on
  *    - 404 / "not found" / unsupported / 403 model access → move to the next model immediately
  *    - malformed or schema-invalid JSON, empty/blocked output → move to the next model
  *    - invalid API key (401 or API_KEY_INVALID)            → stop: no model will work
- *  If every configured model is *unavailable* (retired ids), discover live models via
- *  models.list() and try up to two stable ones not yet tried.
+ *  If nothing in the chain works, discover live models via models.list() and try up to two
+ *  stable ones not yet tried.
  *  If everything fails, the caller decides what to do (we fall back to rule-based output).
  */
 
@@ -39,6 +40,9 @@ export class GeminiUnavailableError extends Error {
 }
 
 class BadOutputError extends Error {}
+
+/** Last model that returned a valid response (per server process); tried first next time. */
+let lastGoodModel: string | null = null;
 
 type ErrorKind = "auth" | "model_unavailable" | "retryable" | "bad_output" | "bad_request";
 
@@ -167,23 +171,33 @@ export async function generateWithFallback<T>(opts: GenerateOptions<T>): Promise
     return { kind: lastKind };
   };
 
+  // Try the model that last succeeded first, so a retired default doesn't cost a full chain walk every time.
+  const chain = lastGoodModel ? [lastGoodModel, ...opts.models.filter((m) => m !== lastGoodModel)] : opts.models;
+
   const kinds: ErrorKind[] = [];
-  for (const model of opts.models) {
+  for (const model of chain) {
     const result = await tryModel(model);
-    if ("data" in result) return { data: result.data, model, attempts };
+    if ("data" in result) {
+      lastGoodModel = model;
+      return { data: result.data, model, attempts };
+    }
     kinds.push(result.kind);
     if (Date.now() > deadline) break;
   }
 
-  // Every configured id is retired/unknown → discover what this key can actually use.
-  if (kinds.length && kinds.every((k) => k === "model_unavailable") && Date.now() < deadline) {
+  // Nothing in the chain worked (retired ids, quota exhausted, ...) → discover what this key can use.
+  if (kinds.length && Date.now() < deadline) {
     const discovered = (await listGenerativeModels(opts.apiKey).catch(() => [])).filter((m) => !tried.has(m));
     for (const model of discovered.slice(0, MAX_DISCOVERED_MODELS)) {
       const result = await tryModel(model);
-      if ("data" in result) return { data: result.data, model, attempts };
+      if ("data" in result) {
+        lastGoodModel = model;
+        return { data: result.data, model, attempts };
+      }
       if (Date.now() > deadline) break;
     }
   }
+  if (lastGoodModel && tried.has(lastGoodModel)) lastGoodModel = null;
 
   throw new GeminiUnavailableError("All Gemini models failed", attempts);
 }

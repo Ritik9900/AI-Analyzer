@@ -6,7 +6,7 @@ export default function AnalyzePage() {
       <div className="mb-6">
         <h1 className="text-xl font-semibold tracking-tight">Single stock analyzer</h1>
         <p className="mt-1 text-sm text-neutral-500">
-          Technicals, a 14-day Chronos forecast and FinBERT news sentiment, synthesised into an entry plan by Gemini.
+          Long-term investment case: business quality, valuation, multi-year trend and risk, with a staggered buying plan from Gemini.
         </p>
       </div>
       <AnalyzeView />

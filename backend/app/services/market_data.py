@@ -30,7 +30,7 @@ def _clean(value) -> float | None:
 
 def get_history(ticker: str, period: str | None = None) -> pd.DataFrame:
     """Daily OHLCV, unadjusted closes (so P/L lines up with what the user actually paid)."""
-    df = yf.Ticker(ticker).history(period=period or settings.history_period, interval="1d", auto_adjust=False)
+    df = yf.Ticker(ticker).history(period=period or settings.lookback_period, interval="1d", auto_adjust=False)
     if df is None or df.empty or "Close" not in df:
         raise TickerNotFound(f"No price history for '{ticker}'")
     df = df.dropna(subset=["Close"])
@@ -39,17 +39,45 @@ def get_history(ticker: str, period: str | None = None) -> pd.DataFrame:
     return df
 
 
+def benchmark_for(ticker: str) -> str:
+    """Broad-market index to compare against: NIFTY 50 for Indian listings, S&P 500 otherwise."""
+    return "^NSEI" if ticker.upper().endswith((".NS", ".BO")) else "^GSPC"
+
+
+def get_benchmark_history(ticker: str) -> tuple[str, pd.DataFrame | None]:
+    symbol = benchmark_for(ticker)
+    try:
+        return symbol, get_history(symbol)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Benchmark %s unavailable: %s", symbol, exc)
+        return symbol, None
+
+
+def get_info(ticker: str) -> dict:
+    try:
+        return yf.Ticker(ticker).info or {}
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("info failed for %s: %s", ticker, exc)
+        return {}
+
+
+def get_financials(ticker: str) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Annual income statement, balance sheet and cash flow (columns = fiscal years, newest first)."""
+    t = yf.Ticker(ticker)
+    frames = []
+    for attr in ("income_stmt", "balance_sheet", "cashflow"):
+        try:
+            df = getattr(t, attr)
+            frames.append(df if isinstance(df, pd.DataFrame) else pd.DataFrame())
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("%s failed for %s: %s", attr, ticker, exc)
+            frames.append(pd.DataFrame())
+    return frames[0], frames[1], frames[2]
+
+
 def get_currency(ticker: str) -> str | None:
     try:
         return yf.Ticker(ticker).fast_info.currency
-    except Exception:
-        return None
-
-
-def get_name(ticker: str) -> str | None:
-    try:
-        info = yf.Ticker(ticker).info
-        return info.get("shortName") or info.get("longName")
     except Exception:
         return None
 

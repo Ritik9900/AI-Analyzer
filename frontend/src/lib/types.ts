@@ -42,6 +42,71 @@ export interface Technicals {
   change_period_pct: number;
 }
 
+export interface LongTerm {
+  years_of_data: number;
+  sma_50: number | null;
+  sma_200: number | null;
+  price_vs_sma200_pct: number | null;
+  trend: "uptrend" | "downtrend" | "sideways" | "unknown";
+  high_52w: number;
+  low_52w: number;
+  pct_from_52w_high: number;
+  pct_from_52w_low: number;
+  return_1y_pct: number | null;
+  cagr_3y_pct: number | null;
+  cagr_5y_pct: number | null;
+  momentum_12_1_pct: number | null;
+  volatility_1y_pct: number | null;
+  max_drawdown_pct: number;
+  current_drawdown_pct: number;
+  rsi_weekly_14: number | null;
+  weekly_support: number[];
+  weekly_resistance: number[];
+  benchmark: string | null;
+  benchmark_return_1y_pct: number | null;
+  relative_return_1y_pct: number | null;
+  beta_1y: number | null;
+}
+
+export interface PiotroskiTest {
+  name: string;
+  passed: boolean | null;
+}
+
+export interface Fundamentals {
+  available: boolean;
+  sector: string | null;
+  industry: string | null;
+  market_cap: number | null;
+  pe_trailing: number | null;
+  pe_forward: number | null;
+  price_to_book: number | null;
+  peg: number | null;
+  roe_pct: number | null;
+  roa_pct: number | null;
+  debt_to_equity: number | null;
+  current_ratio: number | null;
+  gross_margin_pct: number | null;
+  operating_margin_pct: number | null;
+  profit_margin_pct: number | null;
+  revenue_growth_pct: number | null;
+  earnings_growth_pct: number | null;
+  dividend_yield_pct: number | null;
+  payout_ratio_pct: number | null;
+  free_cash_flow: number | null;
+  analyst_target_mean: number | null;
+  analyst_target_low: number | null;
+  analyst_target_high: number | null;
+  analyst_upside_pct: number | null;
+  analyst_rating: string | null;
+  analyst_count: number | null;
+  piotroski_score: number | null;
+  piotroski_max: number | null;
+  piotroski_tests: PiotroskiTest[];
+  fiscal_year: string | null;
+  note: string | null;
+}
+
 export interface ForecastPoint {
   date: string;
   p10: number;
@@ -52,7 +117,8 @@ export interface ForecastPoint {
 export interface Forecast {
   model: string;
   is_mock: boolean;
-  horizon_trading_days: number;
+  frequency: "daily" | "weekly";
+  horizon_periods: number;
   points: ForecastPoint[];
   expected_return_pct: number;
   p10_end: number;
@@ -80,15 +146,19 @@ export interface Sentiment {
 
 export interface PositionSignals {
   ticker: string;
+  name: string | null;
   currency: string | null;
   as_of: string;
+  /** Weekly closes, up to ~5 years. */
   history: PricePoint[];
+  long_term: LongTerm;
+  fundamentals: Fundamentals;
+  /** Daily indicators over the last ~6 months: entry timing only. */
   technicals: Technicals;
   forecast: Forecast;
 }
 
 export interface AnalyzeSignals extends PositionSignals {
-  name: string | null;
   sentiment: Sentiment;
 }
 
@@ -118,6 +188,9 @@ export interface PositionFacts {
   unrealizedPnl: number;
   unrealizedPnlPct: number;
   status: "PROFIT" | "LOSS" | "FLAT";
+  /** Share of total portfolio market value (same-currency positions only); null if not computable. */
+  portfolioWeightPct: number | null;
+  portfolioPositions: number;
 }
 
 export interface GeminiAttempt {

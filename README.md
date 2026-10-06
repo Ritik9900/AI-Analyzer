@@ -1,7 +1,8 @@
 # Portfolio Analyzer & AI Advisor
 
-A local-first stock portfolio tracker that combines technical indicators, CPU-friendly Hugging Face
-models and Google Gemini to produce position-level and single-stock trading strategies.
+A local-first stock portfolio tracker for **long-term equity investors**. It combines fundamentals
+(including a Piotroski F-Score), multi-year trend and risk metrics, CPU-friendly Hugging Face models and
+Google Gemini to produce position reviews and new-investment cases with staggered buying plans.
 
 > **Disclaimer:** This software is for informational and educational purposes only and is not
 > financial advice. Forecasts and AI-generated strategies can be wrong. Consult a qualified financial
@@ -18,9 +19,11 @@ models and Google Gemini to produce position-level and single-stock trading stra
               │  • Prisma ► SQLite (positions, encrypted API key, report audit log)
               │
               └──► FastAPI signals service (127.0.0.1:8000, server-to-server)
-                     • yfinance        – prices, 6-month history, headlines
-                     • pandas-ta       – RSI, MACD, support/resistance
-                     • Chronos-Bolt    – 14-day price forecast   (mock if not loaded)
+                     • yfinance        – 5y prices, index, financials, headlines
+                     • long-term       – 200-DMA trend, CAGR, drawdown, beta, relative return
+                     • fundamentals    – valuation, quality, Piotroski F-Score
+                     • pandas-ta       – daily RSI/MACD (tranche timing only)
+                     • Chronos-Bolt    – 26-week projection on weekly closes (mock if not loaded)
                      • FinBERT         – headline sentiment      (mock if not loaded)
 ```
 
@@ -35,6 +38,32 @@ models and Google Gemini to produce position-level and single-stock trading stra
   folders under `backend/models/`. It will never fetch weights from the internet on its own. You
   download them once, explicitly, with the commands in Step 4.
 - **Gemini fallback chain:** see [Gemini reliability](#gemini-reliability-model-fallback) below.
+
+## Investment approach
+
+The advisor is built for **buy-and-hold investors in cash equities**, not traders. It never suggests
+leverage, F&O, intraday or swing trades, and it uses thesis-based exits instead of tight stop-losses.
+
+| Input (priority order) | What is used                                                                  |
+|------------------------|-------------------------------------------------------------------------------|
+| 1. Business quality    | Piotroski F-Score (9 tests on annual statements), ROE/ROA, margins, debt, FCF  |
+| 2. Valuation           | Trailing/forward P/E, P/B, PEG, analyst target range and upside                |
+| 3. Long-term trend     | Price vs 200-day average, 52-week range, 1y/3y/5y returns, 12-1 momentum, return vs NIFTY 50 / S&P 500 |
+| 4. Risk                | 1y volatility, max drawdown, beta, **your portfolio weight** in the stock      |
+| Timing only            | Daily RSI/MACD and support levels, used to place buy tranches                   |
+| Weak context           | Chronos 26-week projection, FinBERT headline sentiment                          |
+
+Outputs are a stance (Accumulate / Hold / Review thesis / Trim / Exit, or Buy / Accumulate gradually /
+Watchlist / Avoid for new ideas), a scorecard, staggered buy tranches or rebalancing steps, the condition
+that would break the thesis, a 12-24 month view and a review trigger (e.g. next quarterly results).
+
+Notes on the data:
+- Returns are **price returns** and exclude dividends. Dividend yield is shown separately.
+- Yahoo data for some Indian stocks, especially banks, is incomplete. The F-Score is shown as
+  `score / tests-with-data`, and bank-irrelevant ratios are hidden.
+- Price forecasts from time-series foundation models barely beat a random walk for stock prices
+  ([Noguer i Alonso & Franklin, 2026](https://ideas.repec.org/p/arx/papers/2606.27100.html)), so the
+  forecast is deliberately a minor input.
 
 ## Project structure
 
@@ -77,8 +106,9 @@ models and Google Gemini to produce position-level and single-stock trading stra
 | Method | Path                | Returns                                                     |
 |--------|---------------------|-------------------------------------------------------------|
 | GET    | `/health`           | Model toggle, files present, load status / errors            |
+| POST   | `/search`           | `{query}` → fuzzy symbol search by name or ticker            |
 | POST   | `/quotes`           | `{tickers: [...]}` → latest price, previous close, currency   |
-| POST   | `/signals/position` | `{ticker}` → 6mo history, technicals, 14-day forecast         |
+| POST   | `/signals/position` | `{ticker}` → long-term metrics, fundamentals, timing, forecast |
 | POST   | `/signals/analyze`  | `{ticker}` → the above + name + FinBERT headline sentiment    |
 
 **Next.js (localhost:3000)**
@@ -91,7 +121,7 @@ models and Google Gemini to produce position-level and single-stock trading stra
 | POST               | `/api/settings/test`    | Run a ping through the model chain              |
 | GET                | `/api/settings/models`  | Discover Gemini models available to your key    |
 | POST               | `/api/strategy/:id`     | Portfolio AI Strategy for one position          |
-| POST               | `/api/analyze`          | Single-stock entry strategy                     |
+| POST               | `/api/analyze`          | Single-stock long-term investment case          |
 
 ## Gemini reliability (model fallback)
 
@@ -197,7 +227,7 @@ Both models are public, so no Hugging Face token is required. Sizes are approxim
 
 | Model                        | Purpose                    | Size    |
 |------------------------------|----------------------------|---------|
-| `amazon/chronos-bolt-small`  | 14-day price forecast      | ~190 MB |
+| `amazon/chronos-bolt-small`  | 26-week price projection   | ~190 MB |
 | `ProsusAI/finbert`           | Financial news sentiment   | ~440 MB |
 
 Run from `backend/` with the venv active. `hf` is the CLI installed by `huggingface_hub`.
@@ -293,8 +323,8 @@ cd frontend && npm run dev
 | `MODELS_DIR`            | `models`             | Relative to `backend/`                         |
 | `CHRONOS_MODEL_SUBDIR`  | `chronos-bolt-small` |                                                |
 | `FINBERT_MODEL_SUBDIR`  | `finbert`            |                                                |
-| `FORECAST_HORIZON_DAYS` | `14`                 |                                                |
-| `HISTORY_PERIOD`        | `6mo`                | yfinance period string                         |
+| `FORECAST_HORIZON_WEEKS`| `26`                 | Weekly forecast horizon                        |
+| `LOOKBACK_PERIOD`       | `5y`                 | yfinance period string for price history       |
 | `TORCH_NUM_THREADS`     | `4`                  | CPU threads for inference                      |
 
 **frontend/.env**

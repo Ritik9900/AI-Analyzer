@@ -17,7 +17,7 @@ interface StrategyResponse {
   meta: StrategyMeta;
 }
 
-const STEPS = ["Fetching 6 months of daily data", "Computing RSI, MACD, ATR, support/resistance", "Running 14-day forecast", "Asking Gemini for a strategy"];
+const STEPS = ["Fetching 5 years of prices, index and financial statements", "Computing trend, risk, valuation and Piotroski F-Score", "Running 26-week price projection", "Asking Gemini for a long-term view"];
 
 export function StrategyDrawer({ row, onClose }: { row: PositionRow; onClose: () => void }) {
   const [data, setData] = useState<StrategyResponse | null>(null);
@@ -59,7 +59,7 @@ export function StrategyDrawer({ row, onClose }: { row: PositionRow; onClose: ()
   const p = data?.position;
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true" aria-label={`AI strategy for ${row.ticker}`}>
+    <div className="fixed inset-0 z-40 flex justify-end" role="dialog" aria-modal="true" aria-label={`Long-term view for ${row.ticker}`}>
       <div className="absolute inset-0 bg-neutral-900/20" onClick={onClose} />
       <aside className="relative flex h-full w-full max-w-3xl flex-col bg-neutral-50 shadow-xl">
         <header className="flex items-center justify-between border-b border-neutral-200 bg-white px-6 py-4">

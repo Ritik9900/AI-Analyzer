@@ -19,8 +19,10 @@ class Settings(BaseSettings):
     chronos_model_subdir: str = "chronos-bolt-small"
     finbert_model_subdir: str = "finbert"
 
-    forecast_horizon_days: int = 14
-    history_period: str = "6mo"
+    # Long-term investing defaults: 5y of daily data, forecast on weekly closes ~6 months out.
+    lookback_period: str = "5y"  # env LOOKBACK_PERIOD (old HISTORY_PERIOD=6mo is intentionally ignored)
+    forecast_horizon_weeks: int = 26
+    timing_window_days: int = 126  # ~6 months of daily bars for short-term entry-timing indicators
     torch_num_threads: int = 4
     max_headlines: int = 10
     quote_cache_seconds: int = 30

@@ -1,4 +1,4 @@
-"""Chronos-Bolt 14-trading-day quantile forecast, with a clearly-flagged statistical mock.
+"""Chronos-Bolt quantile forecast (weekly closes, ~6-month horizon by default), with a clearly-flagged statistical mock.
 
 The model is loaded lazily, once, from a local directory only. Any failure (toggle off,
 files missing, torch not installed, inference error) degrades to the mock — never a 500.
@@ -51,9 +51,14 @@ def status() -> dict:
     return {"loaded": _pipeline is not None, "error": _load_error}
 
 
-def _future_dates(last_date: pd.Timestamp, horizon: int) -> list[str]:
-    start = pd.Timestamp(last_date).tz_localize(None).normalize() + pd.Timedelta(days=1)
-    return [d.strftime("%Y-%m-%d") for d in pd.bdate_range(start, periods=horizon)]
+def _future_dates(last_date: pd.Timestamp, horizon: int, frequency: str) -> list[str]:
+    last = pd.Timestamp(last_date)
+    last = (last.tz_localize(None) if last.tzinfo else last).normalize()
+    if frequency == "weekly":
+        dates = pd.date_range(last + pd.Timedelta(days=1), periods=horizon, freq="W-FRI")
+    else:
+        dates = pd.bdate_range(last + pd.Timedelta(days=1), periods=horizon)
+    return [d.strftime("%Y-%m-%d") for d in dates]
 
 
 def _chronos_quantiles(pipeline, closes: np.ndarray, horizon: int) -> np.ndarray:
@@ -70,11 +75,16 @@ def _chronos_quantiles(pipeline, closes: np.ndarray, horizon: int) -> np.ndarray
     return np.sort(arr, axis=1)  # guard against quantile crossing
 
 
-def _mock_quantiles(closes: np.ndarray, horizon: int) -> np.ndarray:
-    """Deterministic drift + volatility baseline (dampened 20-day drift, lognormal bands)."""
+# (drift lookback, volatility lookback) in periods: ~1 month / ~3 months daily, ~1 year / ~2 years weekly
+_MOCK_LOOKBACK = {"daily": (20, 60), "weekly": (52, 104)}
+
+
+def _mock_quantiles(closes: np.ndarray, horizon: int, frequency: str) -> np.ndarray:
+    """Deterministic drift + volatility baseline (dampened recent drift, lognormal bands)."""
+    drift_n, vol_n = _MOCK_LOOKBACK[frequency]
     log_ret = np.diff(np.log(closes))
-    drift = float(np.mean(log_ret[-20:])) * 0.5 if len(log_ret) else 0.0
-    sigma = float(np.std(log_ret[-60:])) if len(log_ret) > 1 else 0.02
+    drift = float(np.mean(log_ret[-drift_n:])) * 0.5 if len(log_ret) else 0.0
+    sigma = float(np.std(log_ret[-vol_n:])) if len(log_ret) > 1 else 0.02
     last = float(closes[-1])
     out = np.empty((horizon, 3))
     for i in range(horizon):
@@ -85,9 +95,9 @@ def _mock_quantiles(closes: np.ndarray, horizon: int) -> np.ndarray:
     return out
 
 
-def forecast(df: pd.DataFrame, horizon: int | None = None) -> Forecast:
-    horizon = horizon or settings.forecast_horizon_days
-    closes = df["Close"].to_numpy(dtype=float)
+def forecast(close: pd.Series, horizon: int, frequency: str = "weekly") -> Forecast:
+    """Quantile forecast of `horizon` future periods from a close-price series of the given frequency."""
+    closes = close.to_numpy(dtype=float)
     last = float(closes[-1])
 
     pipeline = _load_pipeline()
@@ -98,17 +108,17 @@ def forecast(df: pd.DataFrame, horizon: int | None = None) -> Forecast:
             model, is_mock = "amazon/chronos-bolt-small", False
         except Exception as exc:  # noqa: BLE001
             logger.exception("Chronos inference failed; using mock")
-            q, model, is_mock = _mock_quantiles(closes, horizon), "mock-drift-volatility", True
+            q, model, is_mock = _mock_quantiles(closes, horizon, frequency), "mock-drift-volatility", True
             note = f"Chronos inference failed ({type(exc).__name__}); synthetic baseline shown."
     else:
-        q, model, is_mock = _mock_quantiles(closes, horizon), "mock-drift-volatility", True
+        q, model, is_mock = _mock_quantiles(closes, horizon, frequency), "mock-drift-volatility", True
         note = (
             "Local models disabled (ENABLE_LOCAL_MODELS=false); synthetic baseline shown."
             if not settings.enable_local_models
             else f"Chronos not loaded ({(_load_error or '').split(':', 1)[0]}); synthetic baseline shown. See /health."
         )
 
-    dates = _future_dates(df.index[-1], horizon)
+    dates = _future_dates(close.index[-1], horizon, frequency)
     points = [
         ForecastPoint(date=d, p10=round(row[0], 4), p50=round(row[1], 4), p90=round(row[2], 4))
         for d, row in zip(dates, q)
@@ -116,7 +126,8 @@ def forecast(df: pd.DataFrame, horizon: int | None = None) -> Forecast:
     return Forecast(
         model=model,
         is_mock=is_mock,
-        horizon_trading_days=horizon,
+        frequency=frequency,
+        horizon_periods=horizon,
         points=points,
         expected_return_pct=round((points[-1].p50 / last - 1) * 100, 2),
         p10_end=points[-1].p10,

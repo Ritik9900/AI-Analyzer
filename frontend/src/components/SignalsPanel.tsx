@@ -1,10 +1,11 @@
-import { ExternalLink } from "lucide-react";
+import { Check, ExternalLink, Minus, X } from "lucide-react";
 import { ForecastChart } from "@/components/ForecastChart";
 import { Badge, Card, Signed, Stat } from "@/components/ui";
-import { fmtNum, fmtPct } from "@/lib/format";
-import type { AnalyzeSignals, PositionSignals, Sentiment } from "@/lib/types";
+import { fmtCompact, fmtNum, fmtPct } from "@/lib/format";
+import type { AnalyzeSignals, Fundamentals, LongTerm, PositionSignals, Sentiment, Technicals } from "@/lib/types";
 
 const levels = (xs: number[]) => (xs.length ? xs.map((x) => fmtNum(x)).join(" · ") : "—");
+const trendTone = { uptrend: "positive", downtrend: "negative", sideways: "neutral", unknown: "neutral" } as const;
 
 export function MockBadge({ what }: { what: string }) {
   return (
@@ -15,32 +16,17 @@ export function MockBadge({ what }: { what: string }) {
 }
 
 export function SignalsPanel({ signals }: { signals: PositionSignals | AnalyzeSignals }) {
-  const t = signals.technicals;
   const f = signals.forecast;
   const sentiment = "sentiment" in signals ? signals.sentiment : null;
 
   return (
     <div className="space-y-4">
-      <Card title="Technicals" description={`Daily bars, ${signals.history.length} sessions · engine: ${t.indicator_engine}`}>
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
-          <Stat label="Last close" value={fmtNum(t.last_close)} sub={<Signed value={t.change_period_pct}>{fmtPct(t.change_period_pct)} over period</Signed>} />
-          <Stat label="RSI (14)" value={fmtNum(t.rsi_14, 1)} sub={t.rsi_state} />
-          <Stat
-            label="MACD histogram"
-            value={<Signed value={t.macd_hist}>{fmtNum(t.macd_hist, 3)}</Signed>}
-            sub={t.macd_crossover !== "none" ? `${t.macd_crossover} cross ${t.macd_crossover_bars_ago}d ago` : t.macd_trend}
-          />
-          <Stat label="ATR (14)" value={fmtNum(t.atr_14)} sub={`Vol ${fmtPct(t.volatility_annual_pct, 1, false)} ann.`} />
-          <Stat label="SMA 20 / 50" value={`${fmtNum(t.sma_20)} / ${fmtNum(t.sma_50)}`} />
-          <Stat label="Period range" value={`${fmtNum(t.low_period)} – ${fmtNum(t.high_period)}`} />
-          <Stat label="Support" value={levels(t.support)} />
-          <Stat label="Resistance" value={levels(t.resistance)} />
-        </dl>
-      </Card>
+      <LongTermCard lt={signals.long_term} />
+      <FundamentalsCard f={signals.fundamentals} currency={signals.currency} />
 
       <Card
-        title={`${f.horizon_trading_days}-day forecast`}
-        description={`Model: ${f.model}`}
+        title={`${f.horizon_periods}-week price projection`}
+        description={`Model: ${f.model} · weekly closes · weak signal for long-term decisions`}
         actions={f.is_mock ? <MockBadge what="Forecast" /> : <Badge tone="info">Chronos-Bolt</Badge>}
       >
         <p className="num mb-3 text-sm text-neutral-700">
@@ -52,7 +38,153 @@ export function SignalsPanel({ signals }: { signals: PositionSignals | AnalyzeSi
       </Card>
 
       {sentiment && <SentimentCard sentiment={sentiment} />}
+      <TimingCard t={signals.technicals} />
     </div>
+  );
+}
+
+function LongTermCard({ lt }: { lt: LongTerm }) {
+  return (
+    <Card
+      title="Long-term picture"
+      description={`${lt.years_of_data} years of daily data · price returns exclude dividends`}
+      actions={<Badge tone={trendTone[lt.trend]}>{lt.trend}</Badge>}
+    >
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+        <Stat
+          label="vs 200-day avg"
+          value={<Signed value={lt.price_vs_sma200_pct}>{fmtPct(lt.price_vs_sma200_pct)}</Signed>}
+          sub={`200d ${fmtNum(lt.sma_200)} · 50d ${fmtNum(lt.sma_50)}`}
+        />
+        <Stat label="52-week range" value={`${fmtNum(lt.low_52w)} – ${fmtNum(lt.high_52w)}`} sub={`${fmtPct(lt.pct_from_52w_high)} from high`} />
+        <Stat
+          label="1-year return"
+          value={<Signed value={lt.return_1y_pct}>{fmtPct(lt.return_1y_pct)}</Signed>}
+          sub={lt.benchmark ? `vs ${lt.benchmark} ${fmtPct(lt.benchmark_return_1y_pct)}` : undefined}
+        />
+        <Stat
+          label="Relative to index (1y)"
+          value={<Signed value={lt.relative_return_1y_pct}>{fmtPct(lt.relative_return_1y_pct)}</Signed>}
+          sub={`Beta ${fmtNum(lt.beta_1y)}`}
+        />
+        <Stat
+          label="CAGR 3y / 5y"
+          value={
+            <>
+              <Signed value={lt.cagr_3y_pct}>{fmtPct(lt.cagr_3y_pct)}</Signed> / <Signed value={lt.cagr_5y_pct}>{fmtPct(lt.cagr_5y_pct)}</Signed>
+            </>
+          }
+        />
+        <Stat label="Momentum (12-1m)" value={<Signed value={lt.momentum_12_1_pct}>{fmtPct(lt.momentum_12_1_pct)}</Signed>} />
+        <Stat label="Max drawdown" value={fmtPct(lt.max_drawdown_pct)} sub={`now ${fmtPct(lt.current_drawdown_pct)} from peak`} />
+        <Stat label="Volatility (1y)" value={fmtPct(lt.volatility_1y_pct, 1, false)} sub={`Weekly RSI ${fmtNum(lt.rsi_weekly_14, 1)}`} />
+        <Stat label="Weekly support" value={levels(lt.weekly_support)} />
+        <Stat label="Weekly resistance" value={levels(lt.weekly_resistance)} />
+      </dl>
+    </Card>
+  );
+}
+
+function FundamentalsCard({ f, currency }: { f: Fundamentals; currency: string | null }) {
+  if (!f.available) {
+    return (
+      <Card title="Fundamentals">
+        <p className="text-sm text-neutral-500">{f.note ?? "Not available for this symbol."}</p>
+      </Card>
+    );
+  }
+  const ratio = f.piotroski_score != null && f.piotroski_max ? f.piotroski_score / f.piotroski_max : null;
+  const fTone = ratio == null ? "neutral" : ratio >= 0.6 ? "positive" : ratio <= 0.35 ? "negative" : "neutral";
+  return (
+    <Card
+      title="Fundamentals"
+      description={[f.sector, f.industry, f.fiscal_year && `FY ending ${f.fiscal_year}`].filter(Boolean).join(" · ") || undefined}
+      actions={
+        f.piotroski_score != null ? (
+          <Badge tone={fTone}>
+            F-Score {f.piotroski_score}/{f.piotroski_max}
+          </Badge>
+        ) : undefined
+      }
+    >
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+        <Stat label="Market cap" value={fmtCompact(f.market_cap, currency)} />
+        <Stat label="P/E (trailing / fwd)" value={`${fmtNum(f.pe_trailing, 1)} / ${fmtNum(f.pe_forward, 1)}`} sub={`PEG ${fmtNum(f.peg)}`} />
+        <Stat label="Price / book" value={fmtNum(f.price_to_book)} />
+        <Stat
+          label="Dividend yield"
+          value={fmtPct(f.dividend_yield_pct, 2, false)}
+          sub={f.payout_ratio_pct != null ? `payout ${fmtPct(f.payout_ratio_pct, 0, false)}` : undefined}
+        />
+        <Stat label="ROE / ROA" value={`${fmtPct(f.roe_pct, 1, false)} / ${fmtPct(f.roa_pct, 1, false)}`} />
+        <Stat label="Operating / net margin" value={`${fmtPct(f.operating_margin_pct, 1, false)} / ${fmtPct(f.profit_margin_pct, 1, false)}`} />
+        <Stat
+          label="Revenue / earnings growth"
+          value={
+            <>
+              <Signed value={f.revenue_growth_pct}>{fmtPct(f.revenue_growth_pct, 1)}</Signed> /{" "}
+              <Signed value={f.earnings_growth_pct}>{fmtPct(f.earnings_growth_pct, 1)}</Signed>
+            </>
+          }
+          sub="latest quarter, YoY"
+        />
+        <Stat label="Debt / equity" value={fmtNum(f.debt_to_equity)} sub={f.current_ratio != null ? `current ratio ${fmtNum(f.current_ratio)}` : undefined} />
+        <Stat
+          label="Analyst target (mean)"
+          value={fmtNum(f.analyst_target_mean)}
+          sub={
+            f.analyst_target_mean != null ? (
+              <>
+                <Signed value={f.analyst_upside_pct}>{fmtPct(f.analyst_upside_pct, 1)}</Signed> · {f.analyst_rating?.replace(/_/g, " ") ?? "—"} (
+                {f.analyst_count ?? 0})
+              </>
+            ) : undefined
+          }
+        />
+        <Stat label="Target range" value={f.analyst_target_low != null ? `${fmtNum(f.analyst_target_low)} – ${fmtNum(f.analyst_target_high)}` : "—"} />
+        <Stat label="Free cash flow" value={fmtCompact(f.free_cash_flow, currency)} />
+      </dl>
+
+      {f.piotroski_tests.length > 0 && (
+        <details className="mt-4 text-sm">
+          <summary className="cursor-pointer text-xs text-neutral-500 hover:text-neutral-800">
+            Piotroski F-Score breakdown (latest vs prior fiscal year)
+          </summary>
+          <ul className="mt-2 grid gap-1 sm:grid-cols-2">
+            {f.piotroski_tests.map((t) => (
+              <li key={t.name} className="flex items-center gap-2 text-neutral-700">
+                {t.passed === true ? (
+                  <Check className="h-4 w-4 text-green-700" aria-label="passed" />
+                ) : t.passed === false ? (
+                  <X className="h-4 w-4 text-red-700" aria-label="failed" />
+                ) : (
+                  <Minus className="h-4 w-4 text-neutral-400" aria-label="no data" />
+                )}
+                <span className={t.passed == null ? "text-neutral-400" : undefined}>{t.name}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+      {f.note && <p className="mt-3 text-xs text-neutral-500">{f.note}</p>}
+    </Card>
+  );
+}
+
+function TimingCard({ t }: { t: Technicals }) {
+  return (
+    <Card title="Short-term timing" description={`Daily indicators, last ~6 months · for timing tranches only · engine: ${t.indicator_engine}`}>
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-4">
+        <Stat label="RSI (14, daily)" value={fmtNum(t.rsi_14, 1)} sub={t.rsi_state} />
+        <Stat
+          label="MACD histogram"
+          value={<Signed value={t.macd_hist}>{fmtNum(t.macd_hist, 3)}</Signed>}
+          sub={t.macd_crossover !== "none" ? `${t.macd_crossover} cross ${t.macd_crossover_bars_ago}d ago` : t.macd_trend}
+        />
+        <Stat label="Daily support" value={levels(t.support)} />
+        <Stat label="Daily resistance" value={levels(t.resistance)} />
+      </dl>
+    </Card>
   );
 }
 

@@ -1,0 +1,33 @@
+PORTFOLIO ANALYZER - END USER LICENCE TERMS
+
+(Template. Have these terms reviewed by a qualified professional before distributing the software,
+especially if you charge for it.)
+
+1. Licence. You receive a personal, non-transferable, non-exclusive licence to use this software on
+   ONE device, for the period stated in your licence key. The licence ends automatically when the
+   period expires.
+
+2. Restrictions. You may not copy, share, sell, rent or sublicense the software or your licence key;
+   reverse engineer, decompile, disassemble or attempt to derive its source code; or tamper with or
+   circumvent its licence checks, except where applicable law expressly permits it.
+
+3. Not financial advice. The software provides information and automated analysis for educational
+   purposes only. It is not investment, financial, tax or legal advice and is not a recommendation to
+   buy or sell any security. Forecasts and AI-generated content can be wrong. Consult a qualified,
+   registered financial adviser before making investment decisions. You are solely responsible for
+   your decisions.
+
+4. Third-party data and services. Market data is retrieved from third-party sources (such as Yahoo
+   Finance) for your personal, informational use and may be delayed, incomplete or inaccurate. AI
+   features use Google Gemini with your own API key and are subject to Google's terms. Local AI models
+   (Amazon Chronos-Bolt, ProsusAI FinBERT) are downloaded from Hugging Face under their own licences.
+
+5. Privacy. Your portfolio data and API key are stored only on your device (the key is encrypted).
+   Ticker symbols are sent to market-data providers, and analysis inputs to Google Gemini when you use
+   AI features. No data is sent to the publisher of this software.
+
+6. No warranty. The software is provided "AS IS", without warranty of any kind. To the maximum extent
+   permitted by law, the publisher is not liable for any loss, including investment losses, arising from
+   its use.
+
+By installing the software you agree to these terms.

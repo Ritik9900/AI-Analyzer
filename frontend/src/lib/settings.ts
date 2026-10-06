@@ -1,7 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { ConfigError, decrypt } from "@/lib/crypto";
 
-const BUILTIN_MODELS = ["gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash"];
+// Retired ids are skipped automatically and live models are discovered, so this is just a starting point.
+const BUILTIN_MODELS = ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-2.5-flash"];
 
 export const MODEL_ID_PATTERN = /^[a-zA-Z0-9.\-_]{1,80}$/;
 

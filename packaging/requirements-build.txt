@@ -1,0 +1,6 @@
+# Packaging tools - install into backend/.venv on the BUILD machine only (see PACKAGING.md).
+nuitka>=2.4
+ordered-set>=4.1
+zstandard>=0.22
+pyinstaller>=6.10
+pyinstaller-hooks-contrib>=2024.8

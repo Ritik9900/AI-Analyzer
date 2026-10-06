@@ -10,3 +10,7 @@ yfinance>=0.2.54
 # Technical indicators. If this fails to install on your Python version,
 # remove the line: the backend falls back to equivalent pure-pandas formulas.
 pandas-ta
+
+# Licence verification (Ed25519) and OS certificate store for model downloads
+cryptography>=42
+truststore>=0.9

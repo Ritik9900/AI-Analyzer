@@ -6,6 +6,9 @@ Google Gemini to produce position reviews and new-investment cases with staggere
 a **Portfolio Insights** dashboard (allocation, sector mix, P/L, performance vs the index, risk and
 correlation).
 
+> **Sharing it as a Windows app?** See [PACKAGING.md](PACKAGING.md): build a licensed, device-locked
+> installer and issue licence keys to each recipient.
+
 > **Disclaimer:** This software is for informational and educational purposes only and is not
 > financial advice. Forecasts and AI-generated strategies can be wrong. Consult a qualified financial
 > adviser before making investment decisions.
@@ -105,6 +108,8 @@ main one are listed as excluded (no FX conversion).
 │       ├── routers/              quotes.py, signals.py, portfolio.py
 │       └── services/             market_data.py, technicals.py, longterm.py, fundamentals.py,
 │                                 forecast.py, sentiment.py, portfolio.py
+├── licensing/                    developer-only licence key tools (see PACKAGING.md)
+├── packaging/                    Windows installer build pipeline (see PACKAGING.md)
 └── frontend/                     Next.js app
     ├── package.json
     ├── .env.example

@@ -13,13 +13,16 @@ export class BackendError extends Error {
   }
 }
 
-async function post<T>(path: string, body: unknown, timeoutMs: number): Promise<T> {
+// Desktop app: a per-launch token shared with the backend so other local programs can't use it.
+const TOKEN_HEADER: Record<string, string> = process.env.PA_TOKEN ? { "x-pa-token": process.env.PA_TOKEN } : {};
+
+async function request<T>(method: "GET" | "POST", path: string, body: unknown, timeoutMs: number): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${BASE_URL}${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
+      method,
+      headers: { "content-type": "application/json", ...TOKEN_HEADER },
+      body: method === "POST" ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(timeoutMs),
       cache: "no-store",
     });
@@ -28,7 +31,9 @@ async function post<T>(path: string, body: unknown, timeoutMs: number): Promise<
     throw new BackendError(
       timedOut
         ? `Signals service timed out after ${timeoutMs / 1000}s.`
-        : `Signals service unreachable at ${BASE_URL}. Is uvicorn running? (README, step 2)`,
+        : process.env.PA_PACKAGED === "1"
+          ? "The analysis service is not running. Restart Portfolio Analyzer."
+          : `Signals service unreachable at ${BASE_URL}. Is uvicorn running? (README, step 2)`,
       timedOut ? 504 : 503,
     );
   }
@@ -44,6 +49,28 @@ async function post<T>(path: string, body: unknown, timeoutMs: number): Promise<
     throw new BackendError(detail, res.status);
   }
   return (await res.json()) as T;
+}
+
+const post = <T>(path: string, body: unknown, timeoutMs: number) => request<T>("POST", path, body, timeoutMs);
+
+export interface LicenseStatus {
+  enforced: boolean;
+  state: string;
+  valid: boolean;
+  message: string;
+  device_id: string | null;
+  licensee: string | null;
+  expires_at: string | null;
+  days_left: number | null;
+  build_version: string;
+}
+
+export function getLicenseStatus() {
+  return request<LicenseStatus>("GET", "/license/status", undefined, 15_000);
+}
+
+export function activateLicense(key: string) {
+  return request<LicenseStatus>("POST", "/license/activate", { key }, 30_000);
 }
 
 export async function getQuotes(tickers: string[]): Promise<Quote[]> {
@@ -80,6 +107,6 @@ export function getAnalyzeSignals(ticker: string) {
 
 /** Map a backend failure to the status our own API should return. */
 export function backendStatus(err: BackendError): number {
-  if (err.status === 404 || err.status === 422) return err.status;
+  if (err.status === 403 || err.status === 404 || err.status === 422) return err.status; // 403 = licence
   return err.status === 504 ? 504 : 502;
 }

@@ -22,3 +22,14 @@ backend/models/
 .env.local
 **/.env
 **/.env.local
+
+# --- Packaging (generated) ---
+packaging/build/
+packaging/dist/
+packaging/electron/node_modules/
+packaging/electron/dist-main/
+
+# --- Licensing: NEVER commit the private signing key or the ledger of issued keys ---
+licensing/keys/
+licensing/issued/
+*.pem

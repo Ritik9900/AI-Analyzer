@@ -1,0 +1,342 @@
+# Portfolio Analyzer & AI Advisor
+
+A local-first stock portfolio tracker that combines technical indicators, CPU-friendly Hugging Face
+models and Google Gemini to produce position-level and single-stock trading strategies.
+
+> **Disclaimer:** This software is for informational and educational purposes only and is not
+> financial advice. Forecasts and AI-generated strategies can be wrong. Consult a qualified financial
+> adviser before making investment decisions.
+
+---
+
+## Architecture
+
+```
+ Browser ──► Next.js (App Router, :3000) ──────────────► Google Gemini API
+              │  • UI (Tailwind, lucide-react)
+              │  • Route handlers (server-side only)
+              │  • Prisma ► SQLite (positions, encrypted API key, report audit log)
+              │
+              └──► FastAPI signals service (127.0.0.1:8000, server-to-server)
+                     • yfinance        – prices, 6-month history, headlines
+                     • pandas-ta       – RSI, MACD, support/resistance
+                     • Chronos-Bolt    – 14-day price forecast   (mock if not loaded)
+                     • FinBERT         – headline sentiment      (mock if not loaded)
+```
+
+- **FastAPI is stateless.** It holds no secrets and no database. It returns numbers only.
+- **Next.js owns the data and the Gemini call.** It reads the encrypted Gemini key from SQLite,
+  calls FastAPI for signals, sends those signals to Gemini, and stores both in `StrategyReport`
+  for auditability. The API key never reaches the browser.
+- **Mock mode:** with `ENABLE_LOCAL_MODELS=false` (the default), or when model files are missing,
+  the backend returns clearly-flagged mock forecast/sentiment (`"is_mock": true`). The UI shows a
+  "mock data" badge and the Gemini prompt is told the forecast is synthetic.
+- **No runtime downloads:** the backend sets `HF_HUB_OFFLINE=1` and loads models only from local
+  folders under `backend/models/`. It will never fetch weights from the internet on its own. You
+  download them once, explicitly, with the commands in Step 4.
+- **Gemini fallback chain:** see [Gemini reliability](#gemini-reliability-model-fallback) below.
+
+## Project structure
+
+```
+.
+├── README.md
+├── backend/                      FastAPI signals service
+│   ├── requirements.txt          core deps (no torch)
+│   ├── requirements-ml.txt       ML deps (install only where you run the models)
+│   ├── .env.example
+│   ├── models/                   (git-ignored) downloaded HF weights live here
+│   └── app/
+│       ├── main.py               app + /health
+│       ├── config.py             env-driven settings, model toggle
+│       ├── schemas.py            request/response contracts
+│       ├── routers/              quotes.py, signals.py
+│       └── services/             market_data.py, technicals.py, forecast.py, sentiment.py
+└── frontend/                     Next.js app
+    ├── package.json
+    ├── .env.example
+    ├── prisma/schema.prisma      AppSettings, Position, StrategyReport
+    └── src/
+        ├── app/                  / (portfolio), /analyze, /settings, /api/*
+        ├── components/           PortfolioTable, StrategyDrawer, StrategyView, SignalsPanel,
+        │                         ForecastChart, AnalyzeView, SettingsForm, ui
+        └── lib/
+            ├── gemini.ts         model fallback chain + model discovery
+            ├── prompts.ts        system instruction + position/analyzer prompts
+            ├── strategy-schema.ts  Gemini responseSchema + zod validation
+            ├── fallback-strategy.ts  rule-based strategy when all models fail
+            ├── ai-pipeline.ts    lock check → Gemini → fallback → audit log
+            ├── crypto.ts         AES-256-GCM for the API key
+            └── backend.ts        FastAPI client
+```
+
+## API reference
+
+**FastAPI (127.0.0.1:8000)**: interactive docs at http://127.0.0.1:8000/docs
+
+| Method | Path                | Returns                                                     |
+|--------|---------------------|-------------------------------------------------------------|
+| GET    | `/health`           | Model toggle, files present, load status / errors            |
+| POST   | `/quotes`           | `{tickers: [...]}` → latest price, previous close, currency   |
+| POST   | `/signals/position` | `{ticker}` → 6mo history, technicals, 14-day forecast         |
+| POST   | `/signals/analyze`  | `{ticker}` → the above + name + FinBERT headline sentiment    |
+
+**Next.js (localhost:3000)**
+
+| Method             | Path                    | Purpose                                         |
+|--------------------|-------------------------|-------------------------------------------------|
+| GET / POST         | `/api/positions`        | List with live P/L / add position               |
+| PATCH / DELETE     | `/api/positions/:id`    | Edit avg price & quantity / remove              |
+| GET / PUT / DELETE | `/api/settings`         | Key status (never the key) / save key or model chain / remove key |
+| POST               | `/api/settings/test`    | Run a ping through the model chain              |
+| GET                | `/api/settings/models`  | Discover Gemini models available to your key    |
+| POST               | `/api/strategy/:id`     | Portfolio AI Strategy for one position          |
+| POST               | `/api/analyze`          | Single-stock entry strategy                     |
+
+## Gemini reliability (model fallback)
+
+Gemini model IDs get retired, rate-limited (429) or overloaded (503) fairly often. Each AI request
+goes through a fallback chain in [frontend/src/lib/gemini.ts](frontend/src/lib/gemini.ts):
+
+1. **Ordered chain.** Models are tried in order. The default is
+   `gemini-2.5-flash → gemini-2.5-flash-lite → gemini-2.0-flash`. Change it in **Settings → Model
+   fallback chain** or with `GEMINI_MODELS` in `frontend/.env`.
+2. **Per-error handling:**
+
+   | Error                                              | Action                                  |
+   |----------------------------------------------------|-----------------------------------------|
+   | 429 / 5xx / timeout / network                      | Retry same model once (backoff), then next |
+   | 404 / 403 / "not found" / "not supported"          | Skip to next model immediately           |
+   | Invalid JSON or schema-invalid output, empty/blocked | Skip to next model                      |
+   | Invalid API key (401 / `API_KEY_INVALID`)          | Stop and ask you to fix the key in Settings |
+
+3. **Auto-discovery.** If *every* configured model ID is unavailable (retired), the app calls
+   `models.list()` with your key and tries up to two of the newest stable Flash/Pro models.
+4. **Rule-based last resort.** If all of that fails, you still get a strategy computed from fixed
+   rules (MACD, forecast direction, RSI, ATR, support/resistance). It is clearly labelled
+   **"Rule-based fallback"**, always `LOW` confidence.
+5. **Transparency.** Every result shows which model answered. Expand **Model fallback log** to see
+   each attempt and why it failed. Use **Settings → Test connection** to check the chain at any time.
+
+The whole chain has a 120-second budget. Every result, Gemini or rule-based, is stored in the
+`StrategyReport` table together with the exact signals that produced it. Browse it with
+`npm run db:studio`.
+
+---
+
+## Setup
+
+### Prerequisites
+
+| Tool    | Version                                  |
+|---------|------------------------------------------|
+| Node.js | 20.9 or newer                            |
+| Python  | **3.12** recommended (3.11 also works)   |
+| Disk    | ~2 GB free if you install torch + models |
+
+Python 3.13/3.14 may not yet have wheels for every dependency (notably torch). Use 3.12 to avoid
+build issues.
+
+### Step 1: Backend core environment
+
+**Windows (PowerShell)**
+```powershell
+cd backend
+py -3.12 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+Copy-Item .env.example .env
+```
+
+**macOS / Linux**
+```bash
+cd backend
+python3.12 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+cp .env.example .env
+```
+
+At this point the backend runs in **mock ML mode**. You can stop here on any machine where you
+can't or don't want to download models.
+
+### Step 2: Run the backend
+
+```bash
+# from backend/, with the venv active
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Check it: open http://127.0.0.1:8000/health. Expected output in mock mode:
+```json
+{"status":"ok","local_models_enabled":false,"chronos_present":false,"finbert_present":false,
+ "chronos":{"loaded":false,"error":null},"finbert":{"loaded":false,"error":null}}
+```
+Models load lazily on the first forecast/sentiment request, so `loaded` stays `false` until then.
+
+### Step 3: Install ML dependencies (personal laptop only)
+
+Install the **CPU-only** build of PyTorch first. It is much smaller than the default CUDA build:
+
+```bash
+# from backend/, with the venv active
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements-ml.txt
+```
+
+Verify:
+```bash
+python -c "import torch, transformers, chronos; print(torch.__version__, transformers.__version__)"
+```
+
+### Step 4: Download the Hugging Face models (personal laptop only)
+
+Both models are public, so no Hugging Face token is required. Sizes are approximate.
+
+| Model                        | Purpose                    | Size    |
+|------------------------------|----------------------------|---------|
+| `amazon/chronos-bolt-small`  | 14-day price forecast      | ~190 MB |
+| `ProsusAI/finbert`           | Financial news sentiment   | ~440 MB |
+
+Run from `backend/` with the venv active. `hf` is the CLI installed by `huggingface_hub`.
+
+```bash
+hf download amazon/chronos-bolt-small --local-dir models/chronos-bolt-small
+
+# FinBERT: skip the TensorFlow/Flax weights, since only the PyTorch weights are needed
+hf download ProsusAI/finbert --local-dir models/finbert --include "*.json" "*.txt" "*.bin" "*.safetensors"
+```
+
+> On older `huggingface_hub` versions, use `huggingface-cli download ...` with the same arguments.
+
+Expected layout:
+```
+backend/models/
+├── chronos-bolt-small/   config.json, model.safetensors, ...
+└── finbert/              config.json, vocab.txt, pytorch_model.bin (or model.safetensors), ...
+```
+
+### Step 5: Enable the local models
+
+Edit `backend/.env`:
+```
+ENABLE_LOCAL_MODELS=true
+```
+
+Restart uvicorn and check `/health`. You should see `true` for all three flags. On first request,
+each model takes a few seconds to load into memory. After that, inference on CPU typically takes
+well under a second per ticker for Chronos-Bolt-Small. If a model fails to load, the service logs the
+error and falls back to mock output, so the app never hard-fails.
+
+### Step 6: Frontend
+
+**Windows (PowerShell)**
+```powershell
+cd frontend
+Copy-Item .env.example .env
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+# paste the output into APP_SECRET in frontend/.env
+npm install
+npx prisma migrate dev --name init
+npm run dev
+```
+
+**macOS / Linux**
+```bash
+cd frontend
+cp .env.example .env
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+# paste the output into APP_SECRET in frontend/.env
+npm install
+npx prisma migrate dev --name init
+npm run dev
+```
+
+Open http://localhost:3000.
+
+### Step 7: Add your Gemini API key
+
+1. Create a key at https://aistudio.google.com/apikey.
+2. In the app, go to **Settings**, paste the key and click **Save**.
+3. The key is encrypted with `APP_SECRET` (AES-256-GCM) before it is written to SQLite. Only the
+   last 4 characters are ever shown in the UI.
+
+The **AI Strategy** and **Analyze** features stay locked until a key is saved.
+
+> If you lose or change `APP_SECRET`, the stored key can no longer be decrypted. Re-enter it in
+> Settings.
+
+---
+
+## Running day-to-day
+
+Use two terminals:
+
+```bash
+# Terminal 1: backend
+cd backend && .venv/Scripts/activate   # or: source .venv/bin/activate
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+# Terminal 2: frontend
+cd frontend && npm run dev
+```
+
+## Configuration reference
+
+**backend/.env**
+
+| Variable                | Default              | Meaning                                       |
+|-------------------------|----------------------|-----------------------------------------------|
+| `ENABLE_LOCAL_MODELS`   | `false`              | Load Chronos/FinBERT from `MODELS_DIR`         |
+| `MODELS_DIR`            | `models`             | Relative to `backend/`                         |
+| `CHRONOS_MODEL_SUBDIR`  | `chronos-bolt-small` |                                                |
+| `FINBERT_MODEL_SUBDIR`  | `finbert`            |                                                |
+| `FORECAST_HORIZON_DAYS` | `14`                 |                                                |
+| `HISTORY_PERIOD`        | `6mo`                | yfinance period string                         |
+| `TORCH_NUM_THREADS`     | `4`                  | CPU threads for inference                      |
+
+**frontend/.env**
+
+| Variable        | Meaning                                                  |
+|-----------------|----------------------------------------------------------|
+| `DATABASE_URL`  | SQLite path, relative to `prisma/`                        |
+| `BACKEND_URL`   | FastAPI base URL (server-side only)                       |
+| `APP_SECRET`    | Base64 32-byte key used to encrypt the Gemini key         |
+| `GEMINI_MODELS` | Default comma-separated model fallback chain (Settings overrides it) |
+
+## Corporate networks (TLS inspection)
+
+If you see `unable to get local issuer certificate` or `UNABLE_TO_GET_ISSUER_CERT_LOCALLY`, your
+network re-signs HTTPS traffic with a corporate root certificate. The OS trusts that certificate, but
+Node's bundled certificate list does not. This affects Prisma engine downloads and Gemini API calls
+made by the Next.js server.
+
+**Fix (Node 22.15+ / 23.8+):** tell Node to also trust the OS certificate store. Certificate
+verification stays fully enabled.
+
+```bash
+# once per machine: applies to npm install, npm run dev/build, and npx
+npm config set node-options=--use-system-ca
+```
+
+Do **not** use `NODE_TLS_REJECT_UNAUTHORIZED=0` or `strict-ssl=false`. Those disable certificate
+checking entirely.
+
+## Troubleshooting
+
+- **`pandas-ta` fails to install:** remove it from `requirements.txt`. The backend computes RSI and
+  MACD with built-in pandas formulas when `pandas_ta` cannot be imported.
+- **yfinance returns empty data:** Yahoo occasionally changes its endpoints. Run
+  `pip install -U yfinance`. Corporate proxies may also block Yahoo Finance.
+- **`/health` shows `*_present: false` after downloading:** check that the folder names under
+  `backend/models/` match `CHRONOS_MODEL_SUBDIR` / `FINBERT_MODEL_SUBDIR`.
+- **Prisma errors after a schema change:** run `npx prisma migrate dev` again.
+- **Every strategy says "Rule-based fallback":** open **Model fallback log** under the strategy.
+  - All `model_unavailable`: use **Settings → Discover models** and add a current model ID.
+  - All `retryable` (429): you've hit the free-tier quota. Wait, or add a different model to the chain.
+- **"Gemini rejected the API key":** re-create the key in Google AI Studio and save it again.
+- **"Stored key could not be decrypted":** `APP_SECRET` changed since the key was saved. Re-enter the key.
+- **Model loaded but still mock:** `/health` shows the load error. Fix it, then restart uvicorn,
+  because a failed load is cached until restart.

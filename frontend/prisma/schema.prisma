@@ -1,0 +1,57 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+/// Single-row settings table (id is always 1).
+model AppSettings {
+  id Int @id @default(1)
+
+  /// Gemini API key, AES-256-GCM encrypted with APP_SECRET.
+  /// Format: base64(iv):base64(authTag):base64(ciphertext). Never returned to the browser.
+  geminiApiKeyEnc String?
+  /// Last 4 chars only, for display ("••••abcd").
+  geminiApiKeyHint String?
+  /// Ordered, comma-separated Gemini model fallback chain. Null = use GEMINI_MODELS / built-in default.
+  geminiModels     String?
+
+  updatedAt DateTime @updatedAt
+}
+
+/// One row per ticker; avgBuyPrice is the blended cost basis.
+model Position {
+  id          Int      @id @default(autoincrement())
+  ticker      String   @unique
+  avgBuyPrice Float
+  quantity    Float
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  reports StrategyReport[]
+}
+
+/// Audit trail of every AI strategy generated: the exact signals sent to Gemini
+/// and the response received, so any recommendation can be reviewed later.
+model StrategyReport {
+  id         Int       @id @default(autoincrement())
+  /// "POSITION" (portfolio AI Strategy) or "ANALYZER" (single stock search)
+  kind       String
+  ticker     String
+  positionId Int?
+  position   Position? @relation(fields: [positionId], references: [id], onDelete: SetNull)
+
+  /// JSON: technicals + forecast (+ sentiment) payload from the signals service
+  signalsJson String
+  /// JSON: structured Gemini output
+  outputJson  String
+  /// true if forecast/sentiment came from mock data rather than local models
+  usedMockMl  Boolean
+  geminiModel String
+  createdAt   DateTime @default(now())
+
+  @@index([ticker, createdAt])
+}

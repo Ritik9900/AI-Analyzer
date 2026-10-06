@@ -1,0 +1,7 @@
+# Local ML inference — install ONLY on a machine where you intend to run the models.
+# Install the CPU build of torch FIRST (see README, step 3):
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+transformers>=4.45
+chronos-forecasting>=1.5,<3
+huggingface_hub>=0.34
+safetensors>=0.4

@@ -1,0 +1,24 @@
+# --- Node / Next.js ---
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/next-env.d.ts
+frontend/*.tsbuildinfo
+
+# --- Prisma / SQLite (contains your encrypted Gemini key) ---
+frontend/prisma/*.db
+frontend/prisma/*.db-journal
+
+# --- Python ---
+backend/.venv/
+**/__pycache__/
+*.pyc
+
+# --- Local Hugging Face model weights (hundreds of MB, never commit) ---
+backend/models/
+
+# --- Secrets ---
+.env
+.env.local
+**/.env
+**/.env.local

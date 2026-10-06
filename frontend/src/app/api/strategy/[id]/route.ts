@@ -79,6 +79,7 @@ export async function POST(_req: Request, ctx: Ctx) {
     strategy: result.strategy,
     meta: result.meta,
     usedMockMl: signals.forecast.is_mock,
+    position: facts,
   });
 
   return NextResponse.json({ position: facts, signals, strategy: result.strategy, meta: result.meta });

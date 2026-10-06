@@ -28,15 +28,41 @@ def _clean(value) -> float | None:
     return None if math.isnan(f) or math.isinf(f) else f
 
 
+# --- Small in-process TTL cache (prices change slowly enough for a dashboard; info even slower) ---
+
+_cache: dict[tuple, tuple[float, object]] = {}
+_cache_lock_ttl = threading.Lock()
+HISTORY_TTL_SECONDS = 600
+INFO_TTL_SECONDS = 6 * 3600
+
+
+def _cached(key: tuple, ttl: float, loader):
+    now = time.monotonic()
+    with _cache_lock_ttl:
+        hit = _cache.get(key)
+        if hit and now - hit[0] < ttl:
+            return hit[1]
+    value = loader()
+    with _cache_lock_ttl:
+        _cache[key] = (now, value)
+    return value
+
+
 def get_history(ticker: str, period: str | None = None) -> pd.DataFrame:
-    """Daily OHLCV, unadjusted closes (so P/L lines up with what the user actually paid)."""
-    df = yf.Ticker(ticker).history(period=period or settings.lookback_period, interval="1d", auto_adjust=False)
-    if df is None or df.empty or "Close" not in df:
-        raise TickerNotFound(f"No price history for '{ticker}'")
-    df = df.dropna(subset=["Close"])
-    if df.empty:
-        raise TickerNotFound(f"No price history for '{ticker}'")
-    return df
+    """Daily OHLCV, unadjusted closes (so P/L lines up with what the user actually paid). Cached ~10 min."""
+    period = period or settings.lookback_period
+
+    def load() -> pd.DataFrame:
+        df = yf.Ticker(ticker).history(period=period, interval="1d", auto_adjust=False)
+        if df is None or df.empty or "Close" not in df:
+            raise TickerNotFound(f"No price history for '{ticker}'")
+        df = df.dropna(subset=["Close"])
+        if df.empty:
+            raise TickerNotFound(f"No price history for '{ticker}'")
+        return df
+
+    # Callers only read/slice the frame; return a copy anyway so a cached frame can never be mutated.
+    return _cached(("history", ticker, period), HISTORY_TTL_SECONDS, load).copy()
 
 
 def benchmark_for(ticker: str) -> str:
@@ -54,8 +80,15 @@ def get_benchmark_history(ticker: str) -> tuple[str, pd.DataFrame | None]:
 
 
 def get_info(ticker: str) -> dict:
+    """Yahoo profile/valuation dict. Successful lookups are cached for a few hours."""
+    def load() -> dict:
+        info = yf.Ticker(ticker).info
+        if not info:
+            raise ValueError("empty info")  # don't cache empty responses
+        return info
+
     try:
-        return yf.Ticker(ticker).info or {}
+        return dict(_cached(("info", ticker), INFO_TTL_SECONDS, load))
     except Exception as exc:  # noqa: BLE001
         logger.warning("info failed for %s: %s", ticker, exc)
         return {}

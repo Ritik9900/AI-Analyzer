@@ -1,5 +1,5 @@
 import { CircleAlert, CircleCheck, Info, LoaderCircle, TriangleAlert } from "lucide-react";
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, Ref } from "react";
 
 export const cx = (...classes: (string | false | null | undefined)[]) => classes.filter(Boolean).join(" ");
 
@@ -19,14 +19,16 @@ export function Button({
   className,
   children,
   disabled,
+  ref,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; size?: "sm" | "md"; loading?: boolean }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: ButtonVariant; size?: "sm" | "md"; loading?: boolean; ref?: Ref<HTMLButtonElement> }) {
   return (
     <button
       {...props}
+      ref={ref}
       disabled={disabled || loading}
       className={cx(
-        "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors disabled:cursor-not-allowed",
+        "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-1",
         size === "sm" ? "h-8 px-2.5 text-xs" : "h-9 px-3.5 text-sm",
         buttonStyles[variant],
         className,
@@ -67,12 +69,12 @@ export function Card({
   return (
     <section className={cx("rounded-lg border border-neutral-200 bg-white", className)}>
       {(title || actions) && (
-        <header className="flex items-start justify-between gap-4 border-b border-neutral-200 px-5 py-3.5">
+        <header className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-neutral-200 px-5 py-3.5">
           <div>
             {title && <h2 className="text-sm font-semibold text-neutral-900">{title}</h2>}
             {description && <p className="mt-0.5 text-xs text-neutral-500">{description}</p>}
           </div>
-          {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+          {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
         </header>
       )}
       <div className="px-5 py-4">{children}</div>
@@ -123,4 +125,56 @@ export function Stat({ label, value, sub }: { label: string; value: ReactNode; s
 export function Signed({ value, children }: { value: number | null | undefined; children: ReactNode }) {
   const color = value == null || value === 0 ? "text-neutral-700" : value > 0 ? "text-green-700" : "text-red-700";
   return <span className={cx("num", color)}>{children}</span>;
+}
+
+/** Segmented control for mutually exclusive view options (window, metric). */
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+  ariaLabel,
+  size = "md",
+}: {
+  options: { value: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+  ariaLabel: string;
+  size?: "sm" | "md";
+}) {
+  return (
+    <div role="radiogroup" aria-label={ariaLabel} className="inline-flex rounded-md border border-neutral-300 bg-white p-0.5">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          type="button"
+          role="radio"
+          aria-checked={o.value === value}
+          onClick={() => onChange(o.value)}
+          className={cx(
+            "rounded font-medium transition-colors",
+            size === "sm" ? "px-2 py-0.5 text-xs" : "px-3 py-1 text-sm",
+            o.value === value ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900",
+          )}
+        >
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** KPI tile: label, prominent value (proportional figures), optional sub-line. */
+export function StatTile({ label, value, sub, hint }: { label: string; value: ReactNode; sub?: ReactNode; hint?: string }) {
+  return (
+    <div className="rounded-lg border border-neutral-200 bg-white px-4 py-3" title={hint}>
+      <div className="text-xs text-neutral-500">{label}</div>
+      <div className="mt-1 text-lg font-semibold tracking-tight text-neutral-900">{value}</div>
+      {sub && <div className="mt-0.5 text-xs text-neutral-500">{sub}</div>}
+    </div>
+  );
+}
+
+/** Placeholder block while content loads. */
+export function Skeleton({ className }: { className?: string }) {
+  return <div className={cx("animate-pulse rounded bg-neutral-200/70", className)} />;
 }

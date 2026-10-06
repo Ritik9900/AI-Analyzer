@@ -1,4 +1,7 @@
+import type { Metadata } from "next";
 import { AnalyzeView } from "@/components/AnalyzeView";
+
+export const metadata: Metadata = { title: "Analyze" };
 
 export default function AnalyzePage() {
   return (

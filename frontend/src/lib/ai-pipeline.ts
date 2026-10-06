@@ -79,6 +79,8 @@ export async function saveReport(args: {
   strategy: unknown;
   meta: StrategyMeta;
   usedMockMl: boolean;
+  /** Position facts at generation time (POSITION reports), so a saved view can be shown later as-is. */
+  position?: unknown;
 }): Promise<number | undefined> {
   try {
     const report = await prisma.strategyReport.create({
@@ -87,7 +89,7 @@ export async function saveReport(args: {
         ticker: args.ticker,
         positionId: args.positionId,
         signalsJson: JSON.stringify(args.signals),
-        outputJson: JSON.stringify({ strategy: args.strategy, meta: args.meta }),
+        outputJson: JSON.stringify({ strategy: args.strategy, meta: args.meta, position: args.position }),
         usedMockMl: args.usedMockMl,
         geminiModel: args.meta.model ?? "rule-based",
       },

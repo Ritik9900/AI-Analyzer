@@ -43,6 +43,71 @@ class SearchResponse(BaseModel):
     results: list[SymbolMatch]
 
 
+class HoldingInput(BaseModel):
+    ticker: str = Field(pattern=TICKER_PATTERN)
+    quantity: float = Field(gt=0)
+
+
+class PortfolioRequest(BaseModel):
+    holdings: list[HoldingInput] = Field(min_length=1, max_length=100)
+    window_days: int = Field(default=252, ge=40, le=504)  # trading days used for risk & performance
+
+
+class HoldingAnalytics(BaseModel):
+    ticker: str
+    name: str | None
+    sector: str
+    industry: str | None
+    weight_pct: float  # by latest close x quantity, within the analysed holdings
+    return_pct: float | None  # over the window
+    volatility_pct: float | None  # annualised, over the window
+    beta: float | None
+    pct_vs_sma200: float | None
+    dividend_yield_pct: float | None
+    pe_trailing: float | None
+    risk_contribution_pct: float | None  # share of portfolio variance; sums to 100
+    hrp_weight_pct: float | None  # Hierarchical Risk Parity reference weight
+
+
+class SeriesPoint(BaseModel):
+    date: str
+    portfolio: float  # value of current quantities at that day's close
+    benchmark: float | None
+
+
+class PortfolioStats(BaseModel):
+    return_pct: float | None  # current holdings held over the whole window (hypothetical)
+    benchmark_return_pct: float | None
+    volatility_pct: float | None
+    beta: float | None
+    max_drawdown_pct: float | None
+    diversification_ratio: float | None  # weighted avg stock volatility / portfolio volatility
+    effective_holdings: float  # 1 / sum(w^2)
+    avg_correlation: float | None
+
+
+class Correlation(BaseModel):
+    tickers: list[str]
+    matrix: list[list[float]]
+
+
+class ExcludedHolding(BaseModel):
+    ticker: str
+    reason: str
+
+
+class PortfolioAnalytics(BaseModel):
+    as_of: str
+    benchmark: str
+    window_days: int
+    start_date: str | None
+    holdings: list[HoldingAnalytics]
+    series: list[SeriesPoint]
+    correlation: Correlation | None
+    stats: PortfolioStats
+    excluded: list[ExcludedHolding]
+
+
 class PricePoint(BaseModel):
     date: str
     close: float

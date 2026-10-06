@@ -212,3 +212,148 @@ export interface ApiErrorBody {
   /** Present on UNKNOWN_TICKER / 404 errors. */
   suggestions?: SymbolMatch[];
 }
+
+// --- Portfolio insights ---------------------------------------------------------------
+
+export interface HoldingAnalytics {
+  ticker: string;
+  name: string | null;
+  sector: string;
+  industry: string | null;
+  weight_pct: number;
+  return_pct: number | null;
+  volatility_pct: number | null;
+  beta: number | null;
+  pct_vs_sma200: number | null;
+  dividend_yield_pct: number | null;
+  pe_trailing: number | null;
+  risk_contribution_pct: number | null;
+  hrp_weight_pct: number | null;
+}
+
+export interface PortfolioAnalytics {
+  as_of: string;
+  benchmark: string;
+  window_days: number;
+  start_date: string | null;
+  holdings: HoldingAnalytics[];
+  series: { date: string; portfolio: number; benchmark: number | null }[];
+  correlation: { tickers: string[]; matrix: number[][] } | null;
+  stats: {
+    return_pct: number | null;
+    benchmark_return_pct: number | null;
+    volatility_pct: number | null;
+    beta: number | null;
+    max_drawdown_pct: number | null;
+    diversification_ratio: number | null;
+    effective_holdings: number;
+    avg_correlation: number | null;
+  };
+  excluded: { ticker: string; reason: string }[];
+}
+
+export interface InsightHolding {
+  ticker: string;
+  name: string | null;
+  sector: string;
+  quantity: number;
+  avgBuyPrice: number;
+  price: number | null;
+  invested: number;
+  value: number | null;
+  pnl: number | null;
+  pnlPct: number | null;
+  dayChangePct: number | null;
+  weightPct: number | null;
+  investedWeightPct: number;
+  returnPct: number | null;
+  volatilityPct: number | null;
+  beta: number | null;
+  pctVsSma200: number | null;
+  dividendYieldPct: number | null;
+  riskContributionPct: number | null;
+  hrpWeightPct: number | null;
+}
+
+export interface SectorSlice {
+  sector: string;
+  value: number;
+  invested: number;
+  valuePct: number;
+  investedPct: number;
+  tickers: string[];
+}
+
+export interface Observation {
+  tone: "warning" | "info" | "positive";
+  title: string;
+  detail: string;
+}
+
+export interface InsightsResponse {
+  currency: string | null;
+  window: { days: number; label: string; startDate: string | null };
+  benchmark: { symbol: string; label: string } | null;
+  kpis: {
+    marketValue: number;
+    invested: number;
+    pnl: number;
+    pnlPct: number;
+    dayChange: number | null;
+    dayChangePct: number | null;
+    holdings: number;
+    estDividendIncome: number | null;
+    dividendYieldPct: number | null;
+    returnPct: number | null;
+    benchmarkReturnPct: number | null;
+    volatilityPct: number | null;
+    beta: number | null;
+    maxDrawdownPct: number | null;
+    effectiveHoldings: number | null;
+    avgCorrelation: number | null;
+  };
+  holdings: InsightHolding[];
+  sectors: SectorSlice[];
+  series: { date: string; portfolio: number; benchmark: number | null }[];
+  correlation: { tickers: string[]; matrix: number[][] } | null;
+  observations: Observation[];
+  excluded: { ticker: string; reason: string }[];
+  analyticsError: string | null;
+  pricesError: string | null;
+}
+
+// --- Saved strategy reports -------------------------------------------------------------
+
+export interface ReportSummary {
+  id: number;
+  kind: "POSITION" | "ANALYZER";
+  ticker: string;
+  positionId: number | null;
+  createdAt: string;
+  stance: string;
+  source: "gemini" | "rule-based";
+  model: string | null;
+}
+
+interface SavedReportBase {
+  id: number;
+  ticker: string;
+  positionId: number | null;
+  createdAt: string;
+  usedMockMl: boolean;
+  meta: StrategyMeta;
+}
+
+export type SavedReport =
+  | (SavedReportBase & {
+      kind: "POSITION";
+      signals: PositionSignals;
+      strategy: import("@/lib/strategy-schema").PositionStrategy;
+      position: PositionFacts | null;
+    })
+  | (SavedReportBase & {
+      kind: "ANALYZER";
+      signals: AnalyzeSignals;
+      strategy: import("@/lib/strategy-schema").AnalyzerStrategy;
+      position: null;
+    });

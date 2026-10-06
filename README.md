@@ -2,7 +2,9 @@
 
 A local-first stock portfolio tracker for **long-term equity investors**. It combines fundamentals
 (including a Piotroski F-Score), multi-year trend and risk metrics, CPU-friendly Hugging Face models and
-Google Gemini to produce position reviews and new-investment cases with staggered buying plans.
+Google Gemini to produce position reviews and new-investment cases with staggered buying plans, plus
+a **Portfolio Insights** dashboard (allocation, sector mix, P/L, performance vs the index, risk and
+correlation).
 
 > **Disclaimer:** This software is for informational and educational purposes only and is not
 > financial advice. Forecasts and AI-generated strategies can be wrong. Consult a qualified financial
@@ -25,6 +27,7 @@ Google Gemini to produce position reviews and new-investment cases with staggere
                      • pandas-ta       – daily RSI/MACD (tranche timing only)
                      • Chronos-Bolt    – 26-week projection on weekly closes (mock if not loaded)
                      • FinBERT         – headline sentiment      (mock if not loaded)
+                     • portfolio       – risk contribution, correlation, HRP, vs-index series
 ```
 
 - **FastAPI is stateless.** It holds no secrets and no database. It returns numbers only.
@@ -65,6 +68,26 @@ Notes on the data:
   ([Noguer i Alonso & Franklin, 2026](https://ideas.repec.org/p/arx/papers/2606.27100.html)), so the
   forecast is deliberately a minor input.
 
+## Portfolio Insights
+
+The **Insights** page (`/insights`) analyses all holdings together. A period switch (3M / 6M / 1Y) at the
+top scopes every period-based chart.
+
+| Section | What it shows |
+|---|---|
+| Key figures | Market value, unrealised and today's P/L, return vs the index, volatility, beta, max drawdown, effective number of holdings, estimated dividends |
+| Key observations | Rule-based findings (no AI): concentration, sector overweight, holdings that add outsized risk, highly correlated pairs, under/over-performance, biggest loss contributor, how many holdings sit below their 200-day average |
+| Allocation | Share of each stock or sector, by current value or by amount invested, with a concentration ceiling line |
+| Profit / loss by holding | Diverging bars of unrealised gain/loss |
+| Portfolio vs index | Today's holdings vs NIFTY 50 / S&P 500, both indexed to 100 |
+| Where your risk comes from | Share of value vs share of portfolio volatility per holding |
+| How holdings move together | Correlation heatmap of daily returns |
+| Risk-balanced reference weights | Hierarchical Risk Parity weights vs current weights (a reference, not advice) |
+| Holdings detail | Sortable table with return, volatility, beta, distance from the 200-day average, dividend yield and risk share |
+
+Every chart has hover/keyboard tooltips and a table equivalent. Holdings in a currency other than the
+main one are listed as excluded (no FX conversion).
+
 ## Project structure
 
 ```
@@ -79,22 +102,26 @@ Notes on the data:
 │       ├── main.py               app + /health
 │       ├── config.py             env-driven settings, model toggle
 │       ├── schemas.py            request/response contracts
-│       ├── routers/              quotes.py, signals.py
-│       └── services/             market_data.py, technicals.py, forecast.py, sentiment.py
+│       ├── routers/              quotes.py, signals.py, portfolio.py
+│       └── services/             market_data.py, technicals.py, longterm.py, fundamentals.py,
+│                                 forecast.py, sentiment.py, portfolio.py
 └── frontend/                     Next.js app
     ├── package.json
     ├── .env.example
     ├── prisma/schema.prisma      AppSettings, Position, StrategyReport
     └── src/
-        ├── app/                  / (portfolio), /analyze, /settings, /api/*
-        ├── components/           PortfolioTable, StrategyDrawer, StrategyView, SignalsPanel,
-        │                         ForecastChart, AnalyzeView, SettingsForm, ui
+        ├── app/                  / (portfolio), /insights, /analyze, /settings, /api/*
+        ├── components/           PortfolioTable, InsightsView, StrategyDrawer, StrategyView,
+        │                         SignalsPanel, ForecastChart, AnalyzeView, SettingsForm, ui
+        │   └── charts/           BarList, DivergingBars, PairedBars, Dumbbell, LineCompare, Heatmap
         └── lib/
             ├── gemini.ts         model fallback chain + model discovery
             ├── prompts.ts        system instruction + position/analyzer prompts
             ├── strategy-schema.ts  Gemini responseSchema + zod validation
             ├── fallback-strategy.ts  rule-based strategy when all models fail
             ├── ai-pipeline.ts    lock check → Gemini → fallback → audit log
+            ├── insights.ts       portfolio KPIs, sectors and rule-based observations
+            ├── reports.ts        reading saved strategies back (skips outdated formats)
             ├── crypto.ts         AES-256-GCM for the API key
             └── backend.ts        FastAPI client
 ```
@@ -110,6 +137,7 @@ Notes on the data:
 | POST   | `/quotes`           | `{tickers: [...]}` → latest price, previous close, currency   |
 | POST   | `/signals/position` | `{ticker}` → long-term metrics, fundamentals, timing, forecast |
 | POST   | `/signals/analyze`  | `{ticker}` → the above + name + FinBERT headline sentiment    |
+| POST   | `/portfolio/analytics` | `{holdings, window_days}` → series vs index, risk share, correlation, HRP |
 
 **Next.js (localhost:3000)**
 
@@ -122,6 +150,9 @@ Notes on the data:
 | GET                | `/api/settings/models`  | Discover Gemini models available to your key    |
 | POST               | `/api/strategy/:id`     | Portfolio AI Strategy for one position          |
 | POST               | `/api/analyze`          | Single-stock long-term investment case          |
+| GET                | `/api/insights?window=1y` | Portfolio insights for 3m / 6m / 1y           |
+| GET                | `/api/reports`          | Saved strategies (filter by kind / positionId)  |
+| GET                | `/api/reports/:id`      | One saved strategy with the signals behind it   |
 
 ## Gemini reliability (model fallback)
 
@@ -313,6 +344,59 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000
 cd frontend && npm run dev
 ```
 
+## Updating after `git pull`
+
+Run these on any machine that already has the app set up, every time you pull new code. Each step is
+safe to re-run even when nothing changed.
+
+**1. Stop both servers**, then pull:
+```bash
+git pull
+```
+
+**2. Backend dependencies** (new Python packages, if any):
+
+Windows (PowerShell)
+```powershell
+cd backend
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+# only on the machine that runs the local models:
+pip install -r requirements-ml.txt
+```
+macOS / Linux
+```bash
+cd backend && source .venv/bin/activate
+pip install -r requirements.txt
+pip install -r requirements-ml.txt   # local-models machine only
+```
+
+**3. Compare `backend/.env` with `backend/.env.example`** and copy over any new keys. Settings you
+leave out fall back to safe defaults.
+
+**4. Frontend dependencies and database migrations:**
+```bash
+cd frontend
+cp prisma/dev.db prisma/dev.db.bak        # optional backup (PowerShell: Copy-Item prisma\dev.db prisma\dev.db.bak)
+npm install                               # also runs `prisma generate` (postinstall)
+npx prisma migrate deploy                 # applies any new migrations in prisma/migrations
+```
+- `prisma migrate deploy` applies only migrations that have not run yet. It never deletes data or
+  resets the database, and it prints `No pending migrations to apply` when the schema is unchanged.
+- Use `npx prisma migrate dev` only when **you** change `schema.prisma` yourself. It creates a new
+  migration and may offer to reset the database if it detects drift.
+- If `npm install` fails while downloading Prisma engines on a corporate network, see
+  [Corporate networks](#corporate-networks-tls-inspection).
+
+**5. Compare `frontend/.env` with `frontend/.env.example`** for new keys. Keep your existing
+`APP_SECRET`: if it changes, the saved Gemini key can no longer be decrypted.
+
+**6. Restart both servers** (see [Running day-to-day](#running-day-to-day)). Restart the backend after
+every pull, because a failed model load is cached until restart.
+
+**Quick check:** open http://127.0.0.1:8000/health and http://localhost:3000. If a page shows
+stale data, hard-refresh the browser (Ctrl+Shift+R).
+
 ## Configuration reference
 
 **backend/.env**
@@ -362,7 +446,8 @@ checking entirely.
   `pip install -U yfinance`. Corporate proxies may also block Yahoo Finance.
 - **`/health` shows `*_present: false` after downloading:** check that the folder names under
   `backend/models/` match `CHRONOS_MODEL_SUBDIR` / `FINBERT_MODEL_SUBDIR`.
-- **Prisma errors after a schema change:** run `npx prisma migrate dev` again.
+- **Prisma errors after a pull:** run `npm install` then `npx prisma migrate deploy` (see
+  [Updating after git pull](#updating-after-git-pull)).
 - **Every strategy says "Rule-based fallback":** open **Model fallback log** under the strategy.
   - All `model_unavailable`: use **Settings → Discover models** and add a current model ID.
   - All `retryable` (429): you've hit the free-tier quota. Wait, or add a different model to the chain.

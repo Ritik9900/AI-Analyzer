@@ -1,4 +1,4 @@
-import type { AnalyzeSignals, PositionSignals, Quote, SymbolMatch } from "@/lib/types";
+import type { AnalyzeSignals, PortfolioAnalytics, PositionSignals, Quote, SymbolMatch } from "@/lib/types";
 
 // Server-side client for the FastAPI signals service. Never imported by client components.
 
@@ -64,6 +64,10 @@ export async function suggestSymbols(query: string, limit = 5): Promise<SymbolMa
   } catch {
     return [];
   }
+}
+
+export function getPortfolioAnalytics(holdings: { ticker: string; quantity: number }[], windowDays: number) {
+  return post<PortfolioAnalytics>("/portfolio/analytics", { holdings, window_days: windowDays }, 60_000);
 }
 
 export function getPositionSignals(ticker: string) {

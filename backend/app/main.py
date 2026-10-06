@@ -9,7 +9,7 @@ import logging
 from fastapi import FastAPI
 
 from app.config import settings  # first import: sets HF offline env vars
-from app.routers import quotes, signals
+from app.routers import portfolio, quotes, signals
 from app.services import forecast, sentiment
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -17,6 +17,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 app = FastAPI(title="Portfolio Analyzer — Signals Service", version="0.2.0")
 app.include_router(quotes.router)
 app.include_router(signals.router)
+app.include_router(portfolio.router)
 
 
 @app.get("/health")

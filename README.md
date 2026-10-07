@@ -91,6 +91,27 @@ top scopes every period-based chart.
 Every chart has hover/keyboard tooltips and a table equivalent. Holdings in a currency other than the
 main one are listed as excluded (no FX conversion).
 
+## Discover (sector screener)
+
+The **Discover** page (`/discover`) finds the strongest long-term candidates in a sector.
+Choose a country (**India**: NSE, BSE; **US**: NYSE, NASDAQ), the exchanges, a sector and a minimum
+company size.
+
+1. **Screen.** The largest stocks in that sector are screened (up to 40, one listing per company).
+2. **Score.** Each stock is scored against its sector peers, as percentiles. The weights are
+   quality 35% (ROE, margins, growth, debt), valuation 25% (P/E, P/B, analyst upside), trend 25%
+   (200-day average, 12-1 momentum, return vs NIFTY 50 / S&P 500) and risk 15% (volatility,
+   drawdown).
+3. **Check the leaders.** The top 8 get a Piotroski F-Score and FinBERT news sentiment, which
+   adjust their score.
+4. **Compare the top 3.** These get a Chronos projection, and Gemini compares them to produce a
+   **ranked shortlist**: a verdict, the thesis, why each ranks where it does, a buy zone, and what
+   would make it a bad pick. Without a Gemini key, or if Gemini fails, a rule-based shortlist is
+   shown instead.
+
+Results link to the full Analyze view and to "Add to portfolio". A screen takes about 15–60 s and
+is cached for 30 minutes. It's a shortlist for research, not a recommendation to buy.
+
 ## Project structure
 
 ```
@@ -143,6 +164,7 @@ main one are listed as excluded (no FX conversion).
 | POST   | `/quotes`           | `{tickers: [...]}` → latest price, previous close, currency   |
 | POST   | `/signals/position` | `{ticker}` → long-term metrics, fundamentals, timing, forecast |
 | POST   | `/signals/analyze`  | `{ticker}` → the above + name + FinBERT headline sentiment    |
+| GET / POST | `/discover/options`, `/discover` | Markets & sectors / sector screen with factor scores |
 | POST   | `/portfolio/analytics` | `{holdings, window_days}` → series vs index, risk share, correlation, HRP |
 
 **Next.js (localhost:3000)**

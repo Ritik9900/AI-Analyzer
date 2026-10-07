@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Briefcase, ChartPie, Search, Settings } from "lucide-react";
+import { Briefcase, ChartPie, Compass, Search, Settings } from "lucide-react";
 import { cx } from "@/components/ui";
 
 const NAV = [
   { href: "/", label: "Portfolio", icon: Briefcase },
   { href: "/insights", label: "Insights", icon: ChartPie },
+  { href: "/discover", label: "Discover", icon: Compass },
   { href: "/analyze", label: "Analyze", icon: Search },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

@@ -49,6 +49,9 @@ export function PortfolioTable() {
 
   useEffect(() => {
     load();
+    // Arriving from Discover ("Add to portfolio"): pre-fill the ticker.
+    const add = new URLSearchParams(window.location.search).get("add");
+    if (add) setForm((f) => ({ ...f, ticker: add.toUpperCase().slice(0, 20) }));
   }, [load]);
 
   // Keep prices fresh while the tab is visible; never refresh under an open inline edit.

@@ -253,3 +253,80 @@ class PositionSignals(BaseModel):
 
 class AnalyzeSignals(PositionSignals):
     sentiment: Sentiment
+
+
+# --- Discover (sector screener) -----------------------------------------------------------
+
+
+class DiscoverRequest(BaseModel):
+    country: Literal["in", "us"]
+    exchanges: list[str] = Field(min_length=1, max_length=4)
+    sector: str = Field(min_length=2, max_length=40)
+    min_market_cap: float | None = Field(default=None, ge=0)  # in the market's currency
+    size: int = Field(default=40, ge=10, le=60)
+
+
+class FactorScores(BaseModel):
+    quality: float | None  # 0..100, percentile within the screened set (higher is better)
+    valuation: float | None
+    trend: float | None
+    risk: float | None  # higher = lower risk
+
+
+class Candidate(BaseModel):
+    rank: int
+    ticker: str
+    name: str | None
+    exchange: str | None
+    industry: str | None
+    currency: str | None
+    price: float | None
+    market_cap: float | None
+    score: float  # 0..100 composite
+    factors: FactorScores
+    coverage: float  # share of factor inputs with data, 0..1
+    pe_trailing: float | None
+    pe_forward: float | None
+    price_to_book: float | None
+    roe_pct: float | None
+    operating_margin_pct: float | None
+    debt_to_equity: float | None
+    revenue_growth_pct: float | None
+    dividend_yield_pct: float | None
+    analyst_upside_pct: float | None
+    analyst_rating: str | None
+    pct_vs_sma200: float | None
+    momentum_12_1_pct: float | None
+    return_1y_pct: float | None
+    relative_1y_pct: float | None
+    volatility_1y_pct: float | None
+    max_drawdown_1y_pct: float | None
+    piotroski_score: int | None = None
+    piotroski_max: int | None = None
+    sentiment_score: float | None = None
+    sentiment_label: str | None = None
+    sentiment_is_mock: bool | None = None
+
+
+class Finalist(BaseModel):
+    ticker: str
+    long_term: LongTerm
+    forecast: Forecast
+    headlines: list[Headline]
+
+
+class DiscoverResponse(BaseModel):
+    as_of: str
+    country: str
+    exchanges: list[str]
+    sector: str
+    currency: str
+    benchmark: str
+    total_in_sector: int | None
+    screened: int
+    sector_medians: dict[str, float | None]
+    candidates: list[Candidate]
+    finalists: list[Finalist]
+    excluded: list[str]
+    notes: list[str]
+    elapsed_s: float

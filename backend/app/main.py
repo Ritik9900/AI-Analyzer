@@ -19,7 +19,7 @@ from app import _build_flags
 from app.config import settings  # first import: sets HF offline env vars
 from app.licensing.manager import get_manager
 from app.routers import license as license_router
-from app.routers import portfolio, quotes, signals
+from app.routers import discover, portfolio, quotes, signals
 from app.services import forecast, sentiment
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -56,6 +56,7 @@ app.include_router(license_router.router)
 app.include_router(quotes.router)
 app.include_router(signals.router)
 app.include_router(portfolio.router)
+app.include_router(discover.router)
 
 
 @app.get("/health")

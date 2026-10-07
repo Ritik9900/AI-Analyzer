@@ -39,6 +39,9 @@ export function AnalyzeView() {
 
   useEffect(() => {
     loadRecent();
+    // Arriving from Discover: pre-fill the ticker (the user still clicks Analyze, which uses a Gemini request).
+    const t = new URLSearchParams(window.location.search).get("ticker");
+    if (t) setTicker(t.toUpperCase().slice(0, 20));
   }, [loadRecent]);
 
   const run = async (symbol: string) => {

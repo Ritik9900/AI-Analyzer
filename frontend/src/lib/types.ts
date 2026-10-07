@@ -357,3 +357,69 @@ export type SavedReport =
       strategy: import("@/lib/strategy-schema").AnalyzerStrategy;
       position: null;
     });
+
+// --- Discover (sector screener) -----------------------------------------------------------
+
+export interface DiscoverOptions {
+  markets: { code: "in" | "us"; label: string; currency: string; exchanges: string[]; cap_presets: number[] }[];
+  sectors: string[];
+}
+
+export interface DiscoverCandidate {
+  rank: number;
+  ticker: string;
+  name: string | null;
+  exchange: string | null;
+  industry: string | null;
+  currency: string | null;
+  price: number | null;
+  market_cap: number | null;
+  score: number;
+  factors: { quality: number | null; valuation: number | null; trend: number | null; risk: number | null };
+  coverage: number;
+  pe_trailing: number | null;
+  pe_forward: number | null;
+  price_to_book: number | null;
+  roe_pct: number | null;
+  operating_margin_pct: number | null;
+  debt_to_equity: number | null;
+  revenue_growth_pct: number | null;
+  dividend_yield_pct: number | null;
+  analyst_upside_pct: number | null;
+  analyst_rating: string | null;
+  pct_vs_sma200: number | null;
+  momentum_12_1_pct: number | null;
+  return_1y_pct: number | null;
+  relative_1y_pct: number | null;
+  volatility_1y_pct: number | null;
+  max_drawdown_1y_pct: number | null;
+  piotroski_score: number | null;
+  piotroski_max: number | null;
+  sentiment_score: number | null;
+  sentiment_label: string | null;
+  sentiment_is_mock: boolean | null;
+}
+
+export interface DiscoverFinalist {
+  ticker: string;
+  long_term: LongTerm;
+  forecast: Forecast;
+  headlines: Headline[];
+}
+
+export interface DiscoverResult {
+  as_of: string;
+  country: "in" | "us";
+  exchanges: string[];
+  sector: string;
+  currency: string;
+  benchmark: string;
+  total_in_sector: number | null;
+  screened: number;
+  sector_medians: Record<string, number | null>;
+  candidates: DiscoverCandidate[];
+  finalists: DiscoverFinalist[];
+  excluded: string[];
+  notes: string[];
+  elapsed_s: number;
+}

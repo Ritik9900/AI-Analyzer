@@ -193,7 +193,7 @@ Remove-Item $SmokeData -Recurse -Force -ErrorAction SilentlyContinue
 Step "Installer 1/3: desktop shell"
 Push-Location $Electron
 try {
-  Run "npm" @("version", $Version, "--no-git-tag-version", "--allow-same-version")
+  # The version is passed to electron-builder below; package.json is never edited (so git pull stays conflict-free).
   $prep = @("scripts/prepare-main.mjs"); if ($NoObfuscate) { $prep += "--no-obfuscate" }
   Run "node" $prep
 
@@ -201,7 +201,7 @@ try {
   Run "node" @("scripts/scan-secrets.mjs", $Build, (Join-Path $Electron "dist-main"))
 
   Step "Installer 3/3: building the NSIS installer (electron-builder)"
-  Run "npx" @("electron-builder", "--win", "nsis", "--x64", "--publish", "never")
+  Run "npx" @("electron-builder", "--win", "nsis", "--x64", "--publish", "never", "-c.extraMetadata.version=$Version")
 } finally { Pop-Location }
 
 $exe = Get-ChildItem $Dist -Filter "PortfolioAnalyzer-Setup-$Version.exe" | Select-Object -First 1

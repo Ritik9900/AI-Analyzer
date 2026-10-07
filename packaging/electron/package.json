@@ -24,7 +24,6 @@
     "directories": { "output": "../dist", "buildResources": "build" },
     "files": ["dist-main/**/*", "package.json", "!**/*.map"],
     "extraResources": [
-      { "from": "../build/web", "to": "web", "filter": ["**/*", ".next/**/*", "**/.next/**/*", "**/.prisma/**/*"] },
       { "from": "../build/backend/pa-backend", "to": "backend/pa-backend", "filter": ["**/*"] }
     ],
     "asar": true,

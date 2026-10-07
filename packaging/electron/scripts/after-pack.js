@@ -1,4 +1,5 @@
 // electron-builder afterPack hook:
+//  0. copies the UI server (packaging/build/web) into resources/web;
 //  1. verifies the packaged resources are complete (dot-folders and native engines are easy to lose);
 //  2. flips Electron fuses so the shipped exe can't be repurposed as a plain Node runtime or debugged.
 const fs = require("node:fs");
@@ -7,6 +8,14 @@ const { flipFuses, FuseVersion, FuseV1Options } = require("@electron/fuses");
 
 exports.default = async function afterPack(context) {
   const res = path.join(context.appOutDir, "resources");
+
+  // The UI server is copied here rather than via "extraResources": electron-builder skips node_modules
+  // folders there, which would drop Next.js and the Prisma engine. cpSync copies everything, dot-folders included.
+  const webSrc = path.resolve(__dirname, "..", "..", "build", "web");
+  const webDst = path.join(res, "web");
+  fs.rmSync(webDst, { recursive: true, force: true });
+  fs.cpSync(webSrc, webDst, { recursive: true, dereference: true });
+  console.log(`afterPack: copied UI server to ${webDst}`);
   const required = [
     "web/server.js",
     "web/.next/BUILD_ID",

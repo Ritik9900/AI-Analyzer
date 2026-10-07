@@ -62,8 +62,33 @@ def _self_test(models_dir: Path) -> int:
 
     check("licensing", lic)
 
-    for mod in ("torch", "transformers", "chronos"):
-        check(f"optional ML: {mod}", lambda m=mod: getattr(__import__(m), "__version__", "imported"))
+    try:
+        import torch  # noqa: F401
+
+        ml_installed = True
+    except ImportError:
+        ml_installed = False
+        print("[skip] local ML libraries not bundled: the app will use mock forecasts and keyword sentiment")
+
+    if ml_installed:
+        for mod in ("torch", "transformers", "chronos"):
+            check(f"ML library: {mod}", lambda m=mod: getattr(__import__(m), "__version__", "imported"))
+
+        def model_classes():
+            # Resolve the exact classes the models load, so a module missing from the bundle fails the
+            # build instead of silently falling back to mock output at runtime.
+            import torch
+            import transformers
+            from chronos import BaseChronosPipeline  # noqa: F401  (imports the T5-based Chronos-Bolt code)
+            from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline  # noqa: F401
+
+            _ = transformers.BertForSequenceClassification, transformers.BertTokenizerFast  # FinBERT
+            major, minor = (int(x) for x in torch.__version__.split("+")[0].split(".")[:2])
+            if (major, minor) < (2, 6):
+                raise RuntimeError(f"torch {torch.__version__} is too old: FinBERT's .bin weights need torch >= 2.6")
+            return f"torch {torch.__version__}, transformers {transformers.__version__}"
+
+        check("model loaders (FinBERT, Chronos)", model_classes)
     from app.model_download import models_ready
 
     print(f"[..] local models downloaded: {models_ready(models_dir)}")

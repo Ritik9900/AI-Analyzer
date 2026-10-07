@@ -62,7 +62,7 @@ a = Analysis(
     binaries=binaries,
     datas=datas,
     hiddenimports=hiddenimports,
-    excludes=["tkinter", "matplotlib", "IPython", "jupyter", "notebook", "pytest", "tensorflow", "jax", "flax", "keras"],
+    excludes=["tkinter", "matplotlib", "IPython", "jupyter", "notebook", "pytest", "tensorflow", "jax", "flax", "keras", "tensorboard", "torch.utils.tensorboard"],  # training-only tools
     noarchive=False,
 )
 pyz = PYZ(a.pure)

@@ -3,7 +3,9 @@
   "productName": "Portfolio Analyzer",
   "version": "1.0.0",
   "description": "Portfolio Analyzer - long-term portfolio insights and AI-assisted analysis",
-  "author": { "name": "Portfolio Analyzer" },
+  "author": {
+    "name": "Portfolio Analyzer"
+  },
   "private": true,
   "main": "dist-main/main.js",
   "scripts": {
@@ -21,15 +23,35 @@
     "appId": "com.portfolioanalyzer.desktop",
     "productName": "Portfolio Analyzer",
     "copyright": "Copyright (c) Portfolio Analyzer",
-    "directories": { "output": "../dist", "buildResources": "build" },
-    "files": ["dist-main/**/*", "package.json", "!**/*.map"],
+    "directories": {
+      "output": "../dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist-main/**/*",
+      "package.json",
+      "!**/*.map"
+    ],
     "extraResources": [
-      { "from": "../build/backend/pa-backend", "to": "backend/pa-backend", "filter": ["**/*"] }
+      {
+        "from": "../build/backend/pa-backend",
+        "to": "backend/pa-backend",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "asar": true,
     "afterPack": "scripts/after-pack.js",
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
       "icon": "build/icon.ico",
       "artifactName": "PortfolioAnalyzer-Setup-${version}.exe",
       "requestedExecutionLevel": "asInvoker"

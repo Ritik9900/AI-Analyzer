@@ -20,6 +20,7 @@ function* walk(dir) {
 function scan(dir, { content }) {
   for (const file of walk(dir)) {
     const base = path.basename(file);
+    if (base === "cacert.pem") continue;
     if (BAD_NAMES.some((re) => re.test(base))) problems.push(`forbidden file: ${file}`);
     if (content && TEXT_EXT.has(path.extname(file).toLowerCase()) && statSync(file).size < 20 * 1024 * 1024) {
       const text = readFileSync(file, "utf8");

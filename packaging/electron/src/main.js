@@ -309,15 +309,21 @@ if (!app.requestSingleInstanceLock()) {
       if (status.valid) {
         await openApp();
       } else {
-        closeSplash();
+        // Open the next window BEFORE closing the splash: with zero windows open, "window-all-closed" quits the app.
         openActivation();
+        closeSplash();
       }
     } catch (err) {
       fatal(err);
     }
   });
 
-  app.on("window-all-closed", () => app.quit());
+  app.on("window-all-closed", () => {
+    // Belt and braces: never quit while a window transition is in progress.
+    setTimeout(() => {
+      if (BrowserWindow.getAllWindows().length === 0) app.quit();
+    }, 500);
+  });
   app.on("before-quit", () => {
     quitting = true;
     clearInterval(licenseTimer);

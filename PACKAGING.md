@@ -108,7 +108,7 @@ ledger** to bring keys issued that way into the console.
 |---|---|
 | Windows 10/11 x64 | Build on the same OS you ship to |
 | Python **3.12** (python.org) | Tested version for Nuitka + PyInstaller + torch |
-| Node.js 20 or 22 LTS | |
+| Node.js **22 LTS** (minimum 20.19) | The installer builder needs it; older versions fail with `Cannot find module '@noble/hashes/...'` |
 | Visual Studio 2022 **Build Tools**, workload "Desktop development with C++" | C compiler for Nuitka. Without it, Nuitka offers to download MinGW automatically, which also works. |
 | ~15 GB free disk | The first build caches a lot |
 
@@ -330,6 +330,7 @@ service; check current pricing and eligibility. electron-builder signs automatic
 | `Licence public key not set` | Do A4 once |
 | Nuitka: no C compiler | Install VS 2022 Build Tools (C++ workload), or let Nuitka download MinGW when asked |
 | Self-test: `No module named 'app'` | Fixed in the current version (`pa_backend.spec` now bundles the compiled `app*.pyd` explicitly). Pull, then re-run with `-ReuseNative` to skip the long compile. |
+| `Cannot find module '@noble/hashes/blake2.js'` (electron-builder) | Node.js older than 20.19, or edited files in `node_modules`. Install Node.js 22 LTS, delete `packaging\electron\node_modules`, re-run the build (it runs `npm ci`). |
 | Self-test: `ModuleNotFoundError: X` | Add `X` to `EXTRA` in `packaging\backend\gen_bundle_imports.py` (or to `hiddenimports` in `pa_backend.spec`), then rebuild |
 | `No app chunks matched` (obfuscation) | A refactor renamed the marker strings; update `MARKERS` in `packaging\electron\scripts\obfuscate-web.mjs` |
 | `SECRET / PROTECTION SCAN FAILED` | Read the listed files. Never bypass this check: remove what it found |

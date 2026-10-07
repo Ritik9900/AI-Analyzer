@@ -197,7 +197,7 @@ The whole chain has a 120-second budget. Every result, Gemini or rule-based, is 
 
 | Tool    | Version                                  |
 |---------|------------------------------------------|
-| Node.js | 20.9 or newer                            |
+| Node.js | 22 LTS (minimum 20.19)                   |
 | Python  | **3.12** recommended (3.11 also works)   |
 | Disk    | ~2 GB free if you install torch + models |
 

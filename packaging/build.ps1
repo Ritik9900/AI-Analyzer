@@ -61,6 +61,12 @@ if (Select-String -Path (Join-Path $Root "backend\app\licensing\public_key.py") 
   throw "Licence public key not set. Run once: python licensing\make_keys.py (see PACKAGING.md)."
 }
 foreach ($tool in @("node", "npm")) { if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) { throw "$tool not found on PATH." } }
+# electron-builder 26 loads ES-module-only dependencies (@noble/hashes 2.x) via require(), which needs Node >= 20.19.
+$nodeVer = [version]((& node -p "process.versions.node").Trim())
+if ($nodeVer -lt [version]"20.19.0") {
+  throw "Node.js $nodeVer is too old for the installer builder. Install Node.js 22 LTS (minimum 20.19) from nodejs.org, then delete packaging\electron\node_modules and re-run."
+}
+Write-Host "Node.js $nodeVer"
 New-Item -ItemType Directory -Force $Build, $Dist | Out-Null
 
 # --- 1. Backend: compile to native code, then bundle -----------------------------------------
@@ -147,7 +153,14 @@ Get-ChildItem $Web -Recurse -Force -File | Where-Object { $_.Name -like ".env*" 
 Step "Web 2/3: obfuscating server code"
 Push-Location $Electron
 try {
-  if (-not (Test-Path "node_modules")) { Run "npm" @("install") }
+  # Install exactly what package-lock.json pins. Reinstall when the lock file changed, so hand-edited or
+  # stale packages in node_modules can't break the build.
+  $stamp = "node_modules\.lock-hash"
+  $lockHash = (Get-FileHash "package-lock.json" -Algorithm SHA256).Hash
+  if (-not (Test-Path $stamp) -or (Get-Content $stamp -Raw).Trim() -ne $lockHash) {
+    Run "npm" @("ci")
+    Set-Content -Encoding ascii $stamp $lockHash
+  }
   if (-not $NoObfuscate) { Run "node" @("scripts/obfuscate-web.mjs", $Web) }
 } finally { Pop-Location }
 

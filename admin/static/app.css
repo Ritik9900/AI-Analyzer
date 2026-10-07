@@ -1,5 +1,5 @@
 :root {
-  --bg: #fafafa; --card: #fff; --ink: #171717; --ink2: #404040; --muted: #737373; --line: #e5e5e5; --line2: #f0f0f0;
+  --brand: #1d4f91; --brand-hover: #173f74; --brand-bg: #eff5fc; --bg: #fafafa; --card: #fff; --ink: #171717; --ink2: #404040; --muted: #737373; --line: #e5e5e5; --line2: #f0f0f0;
   --accent: #1d4f91; --blue: #2a78d6; --green: #15803d; --green-bg: #f0fdf4; --red: #b91c1c; --red-bg: #fef2f2;
   --amber: #b45309; --amber-bg: #fffbeb; --blue-bg: #eff6ff; --grey-bg: #f5f5f5;
 }
@@ -17,7 +17,7 @@ main.wrap { padding-top: 24px; padding-bottom: 60px; outline: none; }
 nav { display: flex; gap: 2px; flex: 1; overflow-x: auto; }
 nav a { text-decoration: none; color: var(--ink2); padding: 6px 10px; border-radius: 6px; white-space: nowrap; }
 nav a:hover { background: var(--grey-bg); }
-nav a.active { background: var(--ink); color: #fff; }
+nav a.active { background: var(--brand); color: #fff; }
 .pill { text-decoration: none; font-size: 12px; border-radius: 999px; padding: 3px 10px; border: 1px solid var(--line); white-space: nowrap; }
 .pill.ok { background: var(--green-bg); color: var(--green); border-color: #bbf7d0; }
 .pill.warn { background: var(--amber-bg); color: var(--amber); border-color: #fde68a; }
@@ -69,7 +69,8 @@ input:focus, select:focus, textarea:focus, button:focus-visible, a:focus-visible
 .check { display: flex; align-items: center; gap: 8px; font-weight: 400; font-size: 13px; }
 .check input { width: auto; margin: 0; }
 button, .btn { font: inherit; font-size: 13px; font-weight: 600; border-radius: 6px; padding: 7px 14px; cursor: pointer; border: 1px solid #d4d4d4; background: #fff; color: var(--ink); text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
-button.primary { background: var(--ink); border-color: var(--ink); color: #fff; }
+button.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+button.primary:hover:not(:disabled) { background: var(--brand-hover); border-color: var(--brand-hover); }
 button.danger { color: var(--red); }
 button.small { padding: 4px 10px; font-size: 12px; }
 button:disabled { opacity: .45; cursor: default; }

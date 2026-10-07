@@ -90,7 +90,7 @@ export function DiscoverView() {
                 <div className="flex h-9 items-center gap-4">
                   {market?.exchanges.map((ex) => (
                     <label key={ex} className="flex items-center gap-1.5 text-sm text-neutral-800">
-                      <input type="checkbox" checked={exchanges.includes(ex)} onChange={() => toggleExchange(ex)} className="h-4 w-4 accent-neutral-900" />
+                      <input type="checkbox" checked={exchanges.includes(ex)} onChange={() => toggleExchange(ex)} className="h-4 w-4 accent-brand-600" />
                       {ex}
                     </label>
                   ))}

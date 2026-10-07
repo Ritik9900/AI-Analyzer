@@ -27,7 +27,7 @@ export function NavLinks() {
             title={label}
             className={cx(
               "flex items-center gap-1.5 border-b-2 px-1.5 transition-colors",
-              active ? "border-neutral-900 font-medium text-neutral-900" : "border-transparent text-neutral-600 hover:text-neutral-900",
+              active ? "border-brand-600 font-medium text-brand-700" : "border-transparent text-neutral-600 hover:text-brand-700",
             )}
           >
             <Icon className="h-4 w-4" strokeWidth={1.75} aria-hidden />

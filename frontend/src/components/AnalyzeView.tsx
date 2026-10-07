@@ -107,7 +107,7 @@ export function AnalyzeView() {
               title={`Open saved analysis from ${new Date(r.createdAt).toLocaleString()} (no new Gemini request)`}
               className={cx(
                 "rounded-full border border-neutral-300 bg-white px-2.5 py-1 hover:bg-neutral-100 disabled:opacity-50",
-                s?.ticker === r.ticker && savedAt && "border-neutral-900",
+                s?.ticker === r.ticker && savedAt && "border-brand-600",
               )}
             >
               <span className="font-medium text-neutral-900">{r.ticker}</span>

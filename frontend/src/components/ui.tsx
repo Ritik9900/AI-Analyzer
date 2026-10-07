@@ -6,7 +6,7 @@ export const cx = (...classes: (string | false | null | undefined)[]) => classes
 type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 
 const buttonStyles: Record<ButtonVariant, string> = {
-  primary: "bg-neutral-900 text-white hover:bg-neutral-800 disabled:bg-neutral-300",
+  primary: "bg-brand-600 text-white hover:bg-brand-700 active:bg-brand-800 disabled:bg-neutral-300",
   secondary: "border border-neutral-300 bg-white text-neutral-800 hover:bg-neutral-50 disabled:text-neutral-400",
   ghost: "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 disabled:text-neutral-300",
   danger: "text-red-700 hover:bg-red-50 disabled:text-neutral-300",
@@ -28,7 +28,7 @@ export function Button({
       ref={ref}
       disabled={disabled || loading}
       className={cx(
-        "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-1",
+        "inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-200 focus-visible:ring-offset-1",
         size === "sm" ? "h-8 px-2.5 text-xs" : "h-9 px-3.5 text-sm",
         buttonStyles[variant],
         className,
@@ -153,7 +153,7 @@ export function Segmented<T extends string>({
           className={cx(
             "rounded font-medium transition-colors",
             size === "sm" ? "px-2 py-0.5 text-xs" : "px-3 py-1 text-sm",
-            o.value === value ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900",
+            o.value === value ? "bg-brand-600 text-white" : "text-neutral-600 hover:bg-brand-50 hover:text-brand-700",
           )}
         >
           {o.label}

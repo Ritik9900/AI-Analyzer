@@ -69,14 +69,21 @@ if ($nodeVer -lt [version]"20.19.0") {
 Write-Host "Node.js $nodeVer"
 New-Item -ItemType Directory -Force $Build, $Dist | Out-Null
 
+# The licence public key is compiled INTO the engine. Reusing an engine compiled with a different key makes
+# every licence key fail ("The licence key is not valid"), so reuse is only allowed when the key is unchanged.
+$KeyHash = (Get-FileHash (Join-Path $Root "backend\app\licensing\public_key.py") -Algorithm SHA256).Hash
+function KeyMatches([string]$stampFile) { (Test-Path $stampFile) -and ((Get-Content $stampFile -Raw).Trim() -eq $KeyHash) }
+
 # --- 1. Backend: compile to native code, then bundle -----------------------------------------
 if (-not $SkipBackend) {
   $Stage = Join-Path $Build "backend-stage"
   $prevPyd = Get-ChildItem (Join-Path $Stage "out") -Filter "app*.pyd" -ErrorAction SilentlyContinue | Select-Object -First 1
-  if ($ReuseNative -and $prevPyd) {
+  $keyStampNative = Join-Path $Stage "out\public_key.stamp"
+  if ($ReuseNative -and $prevPyd -and (KeyMatches $keyStampNative)) {
     Step "Backend 1-2/4: reusing compiled $($prevPyd.Name) (-ReuseNative)"
   } else {
-  if ($ReuseNative) { Write-Warning "-ReuseNative: no previous compile found, compiling now." }
+  if ($ReuseNative -and -not $prevPyd) { Write-Warning "-ReuseNative: no previous compile found, compiling now." }
+  elseif ($ReuseNative) { Write-Warning "-ReuseNative: the licence public key changed since the last compile (or was not recorded), compiling now." }
   Step "Backend 1/4: staging copy with licence enforcement switched on"
   Fresh $Stage
   Copy-Item (Join-Path $Root "backend\app") (Join-Path $Stage "app") -Recurse
@@ -93,6 +100,7 @@ BUILD_VERSION = "$Version"
   try {
     Run $Py @("-m", "nuitka", "--module", "app", "--include-package=app", "--output-dir=out", "--remove-output", "--no-pyi-file", "--assume-yes-for-downloads")
   } finally { Pop-Location }
+  Set-Content -Encoding ascii $keyStampNative $KeyHash
   }
   $pyd = Get-ChildItem (Join-Path $Stage "out") -Filter "app*.pyd" | Select-Object -First 1
   if (-not $pyd) { throw "Nuitka did not produce app*.pyd" }
@@ -118,9 +126,15 @@ BUILD_VERSION = "$Version"
   Fresh $SelfTestData
   Run (Join-Path $Build "backend\pa-backend\pa-backend.exe") @("--self-test", "--data-dir", $SelfTestData)
   Remove-Item $SelfTestData -Recurse -Force
+  Set-Content -Encoding ascii (Join-Path $Build "backend\public_key.stamp") $KeyHash
 } else {
   Step "Backend: reusing $Build\backend"
   if (-not (Test-Path (Join-Path $Build "backend\pa-backend\pa-backend.exe"))) { throw "No previous backend build to reuse." }
+  if (-not (KeyMatches (Join-Path $Build "backend\public_key.stamp"))) {
+    throw "-SkipBackend refused: backend\app\licensing\public_key.py changed since the backend was built (or was not recorded). Licence keys would be rejected. Run a full build without -SkipBackend / -ReuseNative."
+  }
+  Write-Warning "-SkipBackend: the app reports the version and hard expiry of the reused backend build, not -Version $Version."
+
 }
 
 # --- 2. Web UI: Next.js standalone server --------------------------------------------------------

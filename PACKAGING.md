@@ -328,6 +328,7 @@ service; check current pricing and eligibility. electron-builder signs automatic
 | Symptom | Fix |
 |---|---|
 | `Licence public key not set` | Do A4 once |
+| App says "The licence key is not valid" for a key you just issued | The installed build contains a different public key than your private key (e.g. an engine compiled before the key was created, reused via `-SkipBackend` / `-ReuseNative`). Do a full build; the script now refuses reuse when `public_key.py` changed. |
 | Nuitka: no C compiler | Install VS 2022 Build Tools (C++ workload), or let Nuitka download MinGW when asked |
 | Self-test: `No module named 'app'` | Fixed in the current version (`pa_backend.spec` now bundles the compiled `app*.pyd` explicitly). Pull, then re-run with `-ReuseNative` to skip the long compile. |
 | `Cannot find module '@noble/hashes/blake2.js'` (electron-builder) | Node.js older than 20.19, or edited files in `node_modules`. Install Node.js 22 LTS, delete `packaging\electron\node_modules`, re-run the build (it runs `npm ci`). |

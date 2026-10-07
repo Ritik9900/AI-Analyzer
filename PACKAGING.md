@@ -61,6 +61,45 @@ also gives a whole build a final end date (see B3).
 
 ---
 
+## Admin console (recommended way to do Parts B and C)
+
+A local web console, only for you, that runs builds and manages licences. It keeps its own
+database, `admin\data\admin.db`, of who you licensed, on which date, for which device, for how
+many days, what you charged and which installer version you sent.
+
+```powershell
+admin\start-admin.cmd                      # double-click, or:
+backend\.venv\Scripts\python.exe admin\run.py
+```
+
+Your browser opens with a one-time sign-in link. The console only accepts connections from this
+computer, and it is never included in the installer.
+
+| Page | What you do there |
+|---|---|
+| **Dashboard** | Counts of active / awaiting / expired licences, **expiring in 7 days** (renewal reminders), licences issued per month, revenue recorded, last build |
+| **Issue licence** | Pick or add a recipient, paste their Device ID, choose days (7/30/90/180/365 shortcuts), activate-within, installer version, amount. Then copy the key or a ready-made message to send. |
+| **Licences** | Search and filter every key. Open one to copy the key or message, **record the activation date** they report, add notes or payment, **renew** (prefilled), or mark it revoked in your records. |
+| **Recipients** | Contact details and every licence and device per person |
+| **Builds** | Start `build.ps1` with version, hard expiry and options; **live log**; history with status, duration, size, **SHA-256** (one-click copy) and git commit; open the `dist` folder |
+| **Keys & tools** | Create the signing key once (same as A4), unlock or lock it, check whether it matches the public key in your builds, check any licence key, import keys issued earlier with the CLI, export CSV, audit trail |
+
+Notes:
+- **Unlocking the key:** you enter the signing-key passphrase once per console session. It is never
+  saved, and the key stays in memory only until you lock it or close the console.
+- **What the console can know:** keys work offline, so the app can't report activations back. The
+  console shows "awaiting activation" until the activate-by date and the *latest possible* expiry.
+  Record the activation date when the recipient confirms it, and the exact expiry is shown.
+- **"Mark revoked":** this only updates your records. An offline key keeps working on that device
+  until it expires, so use short `--days` for people you're unsure about.
+- **Backups:** back up `admin\data\admin.db` together with `licensing\keys\private_key.pem`. Both
+  are git-ignored. Every key is also appended to `licensing\issued\licenses.csv` as an extra copy.
+
+The command-line tools in Part C (`issue_license.py`) still work. Use **Keys & tools → Import CLI
+ledger** to bring keys issued that way into the console.
+
+---
+
 ## Part A: One-time setup (personal laptop)
 
 ### A1. Install the prerequisites
@@ -146,6 +185,7 @@ Optional:
 |---|---|
 | `-HardExpiry 2027-06-30` | Every copy of **this build** stops on that date, whatever the licence says. Use it to force people onto newer versions. |
 | `-SkipBackend` | Reuse the last compiled backend. Use this when only the UI changed: it's much faster. |
+| `-ReuseNative` | Reuse the last native compile (Nuitka) and redo only the bundling step. Only when backend code is unchanged, e.g. after fixing a bundling error. |
 | `-NoObfuscate` | Troubleshooting only. Never ship a build made with this. |
 
 What the script does, and stops on any failure:
@@ -289,6 +329,7 @@ service; check current pricing and eligibility. electron-builder signs automatic
 |---|---|
 | `Licence public key not set` | Do A4 once |
 | Nuitka: no C compiler | Install VS 2022 Build Tools (C++ workload), or let Nuitka download MinGW when asked |
+| Self-test: `No module named 'app'` | Fixed in the current version (`pa_backend.spec` now bundles the compiled `app*.pyd` explicitly). Pull, then re-run with `-ReuseNative` to skip the long compile. |
 | Self-test: `ModuleNotFoundError: X` | Add `X` to `EXTRA` in `packaging\backend\gen_bundle_imports.py` (or to `hiddenimports` in `pa_backend.spec`), then rebuild |
 | `No app chunks matched` (obfuscation) | A refactor renamed the marker strings; update `MARKERS` in `packaging\electron\scripts\obfuscate-web.mjs` |
 | `SECRET / PROTECTION SCAN FAILED` | Read the listed files. Never bypass this check: remove what it found |

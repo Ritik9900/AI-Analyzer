@@ -108,6 +108,7 @@ main one are listed as excluded (no FX conversion).
 │       ├── routers/              quotes.py, signals.py, portfolio.py
 │       └── services/             market_data.py, technicals.py, longterm.py, fundamentals.py,
 │                                 forecast.py, sentiment.py, portfolio.py
+├── admin/                        developer-only admin console: licences, recipients, builds (see PACKAGING.md)
 ├── licensing/                    developer-only licence key tools (see PACKAGING.md)
 ├── packaging/                    Windows installer build pipeline (see PACKAGING.md)
 └── frontend/                     Next.js app

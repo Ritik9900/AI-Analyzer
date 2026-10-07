@@ -33,3 +33,6 @@ packaging/electron/dist-main/
 licensing/keys/
 licensing/issued/
 *.pem
+
+# --- Admin console data: licence records, build logs (personal data; back up, never commit) ---
+admin/data/

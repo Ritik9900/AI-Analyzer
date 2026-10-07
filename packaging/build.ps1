@@ -10,12 +10,15 @@
 .PARAMETER HardExpiry  Optional YYYY-MM-DD: every copy of THIS build stops working after this date,
                        whatever the licence says. Use it to force people onto newer versions.
 .PARAMETER SkipBackend Reuse packaging\build\backend from a previous run (faster UI-only rebuilds).
+.PARAMETER ReuseNative Reuse the last Nuitka-compiled app .pyd and redo only the bundling. Use it only when
+                       backend code has NOT changed since that compile (e.g. after fixing a bundling problem).
 .PARAMETER NoObfuscate Skip JavaScript obfuscation (troubleshooting only).
 #>
 param(
   [Parameter(Mandatory = $true)][ValidatePattern('^\d+\.\d+\.\d+$')][string]$Version,
   [ValidatePattern('^(\d{4}-\d{2}-\d{2})?$')][string]$HardExpiry = "",
   [switch]$SkipBackend,
+  [switch]$ReuseNative,
   [switch]$NoObfuscate
 )
 
@@ -62,8 +65,13 @@ New-Item -ItemType Directory -Force $Build, $Dist | Out-Null
 
 # --- 1. Backend: compile to native code, then bundle -----------------------------------------
 if (-not $SkipBackend) {
-  Step "Backend 1/4: staging copy with licence enforcement switched on"
   $Stage = Join-Path $Build "backend-stage"
+  $prevPyd = Get-ChildItem (Join-Path $Stage "out") -Filter "app*.pyd" -ErrorAction SilentlyContinue | Select-Object -First 1
+  if ($ReuseNative -and $prevPyd) {
+    Step "Backend 1-2/4: reusing compiled $($prevPyd.Name) (-ReuseNative)"
+  } else {
+  if ($ReuseNative) { Write-Warning "-ReuseNative: no previous compile found, compiling now." }
+  Step "Backend 1/4: staging copy with licence enforcement switched on"
   Fresh $Stage
   Copy-Item (Join-Path $Root "backend\app") (Join-Path $Stage "app") -Recurse
   Get-ChildItem $Stage -Recurse -Directory -Filter "__pycache__" | Remove-Item -Recurse -Force
@@ -79,6 +87,7 @@ BUILD_VERSION = "$Version"
   try {
     Run $Py @("-m", "nuitka", "--module", "app", "--include-package=app", "--output-dir=out", "--remove-output", "--no-pyi-file", "--assume-yes-for-downloads")
   } finally { Pop-Location }
+  }
   $pyd = Get-ChildItem (Join-Path $Stage "out") -Filter "app*.pyd" | Select-Object -First 1
   if (-not $pyd) { throw "Nuitka did not produce app*.pyd" }
 
@@ -93,6 +102,10 @@ BUILD_VERSION = "$Version"
   try {
     Run $Py @("-m", "PyInstaller", "pa_backend.spec", "--noconfirm", "--clean", "--distpath", (Join-Path $Build "backend"), "--workpath", (Join-Path $Build "pyi-work"))
   } finally { Pop-Location }
+
+  $bundledPyd = Get-ChildItem (Join-Path $Build "backend\pa-backend") -Recurse -Filter "app*.pyd" | Select-Object -First 1
+  if (-not $bundledPyd) { throw "The compiled app module was not bundled (no app*.pyd under build\backend\pa-backend). Check the [spec] lines in the PyInstaller output." }
+  Write-Host "compiled app module bundled: $($bundledPyd.FullName)"
 
   Step "Backend 4/4: self-test of the bundled service"
   $SelfTestData = Join-Path $Build "selftest-data"

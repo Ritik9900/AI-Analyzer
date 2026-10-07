@@ -2,9 +2,20 @@
 # PyInstaller spec: bundles the compiled app.pyd + dependencies into dist/pa-backend/ (one folder).
 # Run from the staging folder that contains app.pyd, pa_backend.py and bundle_imports.py
 # (packaging/build.ps1 does this).
+import glob
+
 from PyInstaller.utils.hooks import collect_all, collect_submodules, copy_metadata
 
 datas, binaries, hiddenimports = [], [], []
+
+# The application itself: the Nuitka-compiled extension module (e.g. app.cp312-win_amd64.pyd).
+# PyInstaller cannot see inside it, so `from app.entry import ...` does not make it bundle the file;
+# add it explicitly, at the bundle root where the frozen interpreter imports from.
+_app_pyd = glob.glob("app.*.pyd") + glob.glob("app.pyd")
+if not _app_pyd:
+    raise SystemExit("[spec] compiled app*.pyd not found next to the spec - run the Nuitka step first")
+binaries.append((_app_pyd[0], "."))
+print(f"[spec] bundling compiled app module: {_app_pyd[0]}")
 
 
 def add_all(pkg):

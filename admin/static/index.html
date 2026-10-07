@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self'; frame-ancestors 'none'" />
+    <title>Admin · Portfolio Analyzer</title>
+    <link rel="icon" href="/static/icon.png" />
+    <link rel="stylesheet" href="/static/app.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="wrap topbar-inner">
+        <a class="brand" href="#/dashboard"><img src="/static/icon.png" alt="" /> Portfolio Analyzer <span>Admin</span></a>
+        <nav id="nav" aria-label="Main">
+          <a href="#/dashboard">Dashboard</a>
+          <a href="#/licenses">Licences</a>
+          <a href="#/issue">Issue licence</a>
+          <a href="#/recipients">Recipients</a>
+          <a href="#/builds">Builds</a>
+          <a href="#/tools">Keys &amp; tools</a>
+        </nav>
+        <a id="keypill" class="pill" href="#/tools">Key: …</a>
+      </div>
+    </header>
+    <main id="view" class="wrap" tabindex="-1"></main>
+    <div id="modal-root"></div>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script src="/static/app.js"></script>
+  </body>
+</html>
